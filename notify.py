@@ -35,18 +35,10 @@ def fetch_html(url):
 
 
 # ---------------------------------------------------------
-# 安定した商品IDを取得（#product / #auction の data-id）
+# URL から商品IDを抽出（最も安定）
 # ---------------------------------------------------------
-def extract_stable_id(detail_soup, fallback_link):
-    tag = detail_soup.select_one("#product")
-    if tag and tag.has_attr("data-id"):
-        return tag["data-id"]
-
-    tag = detail_soup.select_one("#auction")
-    if tag and tag.has_attr("data-id"):
-        return tag["data-id"]
-
-    return fallback_link
+def extract_stable_id_from_url(url):
+    return url.rstrip("/").split("/")[-1]
 
 
 # ---------------------------------------------------------
@@ -68,6 +60,7 @@ def fetch_exist_items():
             continue
 
         link = link_tag["href"]
+        item_id = extract_stable_id_from_url(link)
 
         title_tag = card.select_one(".title")
         if not title_tag:
@@ -83,11 +76,8 @@ def fetch_exist_items():
         price = price_tag.get_text(strip=True) if price_tag else "0"
 
         detail = fetch_html(link)
-
         author_link = detail.select_one(".user-name a")
         author_id = author_link["href"].split("/")[-1] if author_link else ""
-
-        item_id = extract_stable_id(detail, link)
 
         items.append({
             "id": item_id,
@@ -122,6 +112,7 @@ def fetch_auction_items():
             continue
 
         link = link_tag["href"]
+        item_id = extract_stable_id_from_url(link)
 
         title_tag = card.select_one(".title")
         if not title_tag:
@@ -141,11 +132,8 @@ def fetch_auction_items():
         buyout_price = prices[1].get_text(strip=True)
 
         detail = fetch_html(link)
-
         author_link = detail.select_one(".user-name a")
         author_id = author_link["href"].split("/")[-1] if author_link else ""
-
-        item_id = extract_stable_id(detail, link)
 
         items.append({
             "id": item_id,
@@ -244,7 +232,7 @@ def send_special_batch(items):
         embed = {
             "title": f"[特別ユーザー] {item['title']}",
             "url": item["link"],
-            "color": 0xFFA500,  # オレンジ
+            "color": 0xFFA500,
             "author": {
                 "name": "",
                 "icon_url": item["author_icon"]
