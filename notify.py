@@ -6,12 +6,10 @@ import os
 URL = "https://tsunagu.cloud/exist_products?exist_product_category2_id=2&max_sales_count_exist_items=1&is_ai_content=0"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-WEBHOOK_URL = "YOUR_DISCORD_WEBHOOK_URL"  # ← ここに入れる
+# GitHub Actions の Secrets から取得
+WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 
 
-# -------------------------
-# JSON 読み書き
-# -------------------------
 def load_last_data():
     if not os.path.exists("last_data.json"):
         return []
@@ -27,16 +25,10 @@ def save_last_data(data):
         json.dump(data, f, ensure_ascii=False, indent=2)
 
 
-# -------------------------
-# 価格抽出
-# -------------------------
 def extract_price(text):
     return int(text.replace("円", "").replace(",", "").strip())
 
 
-# -------------------------
-# Discord 通知
-# -------------------------
 def send_discord(item):
     embed = {
         "title": item["title"],
@@ -51,9 +43,6 @@ def send_discord(item):
     requests.post(WEBHOOK_URL, json=data)
 
 
-# -------------------------
-# 商品取得（スクレイピング）
-# -------------------------
 def fetch_items():
     res = requests.get(URL, headers=HEADERS)
     soup = BeautifulSoup(res.text, "html.parser")
@@ -69,7 +58,7 @@ def fetch_items():
         price_text = card.select_one(".h3").get_text(strip=True)
         price = extract_price(price_text)
 
-        item_id = link.split("/")[-1]  # 商品IDを抽出
+        item_id = link.split("/")[-1]
 
         items.append({
             "id": item_id,
@@ -82,22 +71,12 @@ def fetch_items():
     return items
 
 
-# -------------------------
-# 条件フィルタ（あなたの条件）
-# -------------------------
 def match_conditions(item):
-    # 5000円以内
     if item["price"] > 5000:
         return False
-
-    # 立ち絵・1人限定・非AI は URL 側で絞っているので不要
-
     return True
 
 
-# -------------------------
-# メイン処理
-# -------------------------
 def main():
     last_ids = load_last_data()
     items = fetch_items()
