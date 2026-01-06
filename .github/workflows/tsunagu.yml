@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  tsunagu:
+  notify:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
@@ -17,10 +17,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install requests beautifulsoup4
 
-      - name: Run Tsunagu notifier
-        run: python tsunagu_notify.py
+      - name: Run notifier
+        run: python notify.py
 
       - name: Commit updated data
         run: |
