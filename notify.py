@@ -27,17 +27,14 @@ def fetch_html(url):
 # 安定した商品IDを取得（#product / #auction の data-id）
 # ---------------------------------------------------------
 def extract_stable_id(detail_soup, fallback_link):
-    # 既存販売
     tag = detail_soup.select_one("#product")
     if tag and tag.has_attr("data-id"):
         return tag["data-id"]
 
-    # オークション
     tag = detail_soup.select_one("#auction")
     if tag and tag.has_attr("data-id"):
         return tag["data-id"]
 
-    # 最終手段：URL
     return fallback_link
 
 
@@ -74,7 +71,6 @@ def fetch_exist_items():
         price_tag = card.select_one(".text-danger")
         price = price_tag.get_text(strip=True) if price_tag else "0"
 
-        # 詳細ページから作者IDと安定ID取得
         detail = fetch_html(link)
 
         author_link = detail.select_one(".user-name a")
@@ -133,7 +129,6 @@ def fetch_auction_items():
         current_price = prices[0].get_text(strip=True)
         buyout_price = prices[1].get_text(strip=True)
 
-        # 詳細ページから作者IDと安定ID取得
         detail = fetch_html(link)
 
         author_link = detail.select_one(".user-name a")
@@ -172,13 +167,13 @@ def match_global_conditions(item):
 
 
 # ---------------------------------------------------------
-# バッチ送信（特定ユーザー新着がある場合のみ @everyone）
+# バッチ送信（常に @everyone、深夜帯は抑制）
 # ---------------------------------------------------------
-def send_discord_batch(items, has_user_specific):
+def send_discord_batch(items):
     if is_quiet_hours():
         mention = ""
     else:
-        mention = "@everyone" if has_user_specific else ""
+        mention = "@everyone"
 
     separator = "✦━━━━━━━━━━━━✦"
     content = f"{separator}\n{mention}" if mention else separator
@@ -186,15 +181,10 @@ def send_discord_batch(items, has_user_specific):
     embeds = []
 
     for item in items:
-        # 色分け
         if item["sale_type"] == "既存販売":
-            base_color = 0x5EB7E8
-        elif item["sale_type"] == "オークション":
-            base_color = 0x0033AA
+            color = 0x5EB7E8
         else:
-            base_color = 0x5EB7E8
-
-        color = 0xFFA500 if item["is_user_specific"] else base_color
+            color = 0x0033AA
 
         embed = {
             "title": item["title"],
@@ -238,30 +228,15 @@ def send_discord_batch(items, has_user_specific):
 # ---------------------------------------------------------
 def main():
     last_all = json.load(open("last_all.json")) if os.path.exists("last_all.json") else []
-    last_users = json.load(open("last_users.json")) if os.path.exists("last_users.json") else []
-
-    users = [u.strip() for u in open("users.txt").read().splitlines()]
 
     new_all = []
-    new_users = []
 
     items = fetch_exist_items() + fetch_auction_items()
 
-    batch_user_specific = []
     batch_exist = []
     batch_auction = []
 
     for item in items:
-        is_user_specific = item["author_id"] in users
-        item["is_user_specific"] = is_user_specific
-
-        # 特定ユーザー通知
-        if is_user_specific and item["id"] not in last_users:
-            batch_user_specific.append(item)
-            new_users.append(item["id"])
-            continue
-
-        # 全体通知
         if item["id"] not in last_all and match_global_conditions(item):
             if item["sale_type"] == "既存販売":
                 batch_exist.append(item)
@@ -269,22 +244,13 @@ def main():
                 batch_auction.append(item)
             new_all.append(item["id"])
 
-    # 特定ユーザー新着があるか？
-    has_user_specific = len(batch_user_specific) > 0
-
-    # 送信
-    if batch_user_specific:
-        send_discord_batch(batch_user_specific, has_user_specific)
-
     if batch_exist:
-        send_discord_batch(batch_exist, has_user_specific)
+        send_discord_batch(batch_exist)
 
     if batch_auction:
-        send_discord_batch(batch_auction, has_user_specific)
+        send_discord_batch(batch_auction)
 
-    # 保存
     json.dump(last_all + new_all, open("last_all.json", "w"))
-    json.dump(last_users + new_users, open("last_users.json", "w"))
 
 
 if __name__ == "__main__":
