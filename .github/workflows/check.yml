@@ -1,4 +1,4 @@
-name: tsunagu-notify
+name: Tsunagu Notifier
 
 on:
   schedule:
