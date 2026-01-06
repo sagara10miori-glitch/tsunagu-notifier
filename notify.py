@@ -33,12 +33,30 @@ def fetch_exist_items():
 
     items = []
     for card in cards:
-        link = card.select_one("a")["href"]
+        # 画像がないカードはスキップ
+        img_tag = card.select_one(".image-1-1 img")
+        if not img_tag:
+            continue
+
+        link_tag = card.select_one("a")
+        if not link_tag:
+            continue
+
+        link = link_tag["href"]
         item_id = link.split("/")[-1]
-        title = card.select_one(".title").get_text(strip=True)
-        img = card.select_one(".image-1-1 img")["src"]
-        author_icon = card.select_one(".avatar img")["src"]
-        price = card.select_one(".text-danger").get_text(strip=True)
+
+        title_tag = card.select_one(".title")
+        if not title_tag:
+            continue
+        title = title_tag.get_text(strip=True)
+
+        img = img_tag["src"]
+
+        author_icon_tag = card.select_one(".avatar img")
+        author_icon = author_icon_tag["src"] if author_icon_tag else ""
+
+        price_tag = card.select_one(".text-danger")
+        price = price_tag.get_text(strip=True) if price_tag else "0"
 
         # 詳細ページから作者ID取得
         detail = fetch_html(link)
