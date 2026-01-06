@@ -4,7 +4,7 @@ from bs4 import BeautifulSoup
 from datetime import datetime, time
 import os
 
-WEBHOOK_URL = os.getenv("WEBHOOK_URL")
+WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 
 
 # ---------------------------------------------------------
@@ -24,64 +24,10 @@ def fetch_html(url):
 
 
 # ---------------------------------------------------------
-# 既存販売の取得
+# 既存販売の取得（安全版）
 # ---------------------------------------------------------
 def fetch_exist_items():
     url = "https://tsunagu.cloud/products"
-    soup = fetch_html(url)
-    cards = soup.select(".p-product")
-
-    items = []
-    for card in cards:
-        # 画像がないカードはスキップ
-        img_tag = card.select_one(".image-1-1 img")
-        if not img_tag:
-            continue
-
-        link_tag = card.select_one("a")
-        if not link_tag:
-            continue
-
-        link = link_tag["href"]
-        item_id = link.split("/")[-1]
-
-        title_tag = card.select_one(".title")
-        if not title_tag:
-            continue
-        title = title_tag.get_text(strip=True)
-
-        img = img_tag["src"]
-
-        author_icon_tag = card.select_one(".avatar img")
-        author_icon = author_icon_tag["src"] if author_icon_tag else ""
-
-        price_tag = card.select_one(".text-danger")
-        price = price_tag.get_text(strip=True) if price_tag else "0"
-
-        # 詳細ページから作者ID取得
-        detail = fetch_html(link)
-        author_link = detail.select_one(".user-name a")
-        author_id = author_link["href"].split("/")[-1] if author_link else ""
-
-        items.append({
-            "id": item_id,
-            "title": title,
-            "img": img,
-            "price": price,
-            "link": link,
-            "author_icon": author_icon,
-            "author_id": author_id,
-            "sale_type": "既存販売"
-        })
-
-    return items
-
-
-# ---------------------------------------------------------
-# オークションの取得
-# ---------------------------------------------------------
-def fetch_auction_items():
-    url = "https://tsunagu.cloud/auctions"
     soup = fetch_html(url)
     cards = soup.select(".p-product")
 
@@ -112,6 +58,60 @@ def fetch_auction_items():
         author_icon_tag = card.select_one(".avatar img")
         author_icon = author_icon_tag["src"] if author_icon_tag else ""
 
+        # 価格
+        price_tag = card.select_one(".text-danger")
+        price = price_tag.get_text(strip=True) if price_tag else "0"
+
+        # 詳細ページから作者ID取得
+        detail = fetch_html(link)
+        author_link = detail.select_one(".user-name a")
+        author_id = author_link["href"].split("/")[-1] if author_link else ""
+
+        items.append({
+            "id": item_id,
+            "title": title,
+            "img": img,
+            "price": price,
+            "link": link,
+            "author_icon": author_icon,
+            "author_id": author_id,
+            "sale_type": "既存販売"
+        })
+
+    return items
+
+
+# ---------------------------------------------------------
+# オークションの取得（安全版）
+# ---------------------------------------------------------
+def fetch_auction_items():
+    url = "https://tsunagu.cloud/auctions"
+    soup = fetch_html(url)
+    cards = soup.select(".p-product")
+
+    items = []
+    for card in cards:
+        img_tag = card.select_one(".image-1-1 img")
+        if not img_tag:
+            continue
+
+        link_tag = card.select_one("a")
+        if not link_tag:
+            continue
+
+        link = link_tag["href"]
+        item_id = link.split("/")[-1]
+
+        title_tag = card.select_one(".title")
+        if not title_tag:
+            continue
+        title = title_tag.get_text(strip=True)
+
+        img = img_tag["src"]
+
+        author_icon_tag = card.select_one(".avatar img")
+        author_icon = author_icon_tag["src"] if author_icon_tag else ""
+
         # 価格が2つ揃っていないカードはスキップ
         prices = card.select("p.h2")
         if len(prices) < 2:
@@ -120,7 +120,6 @@ def fetch_auction_items():
         current_price = prices[0].get_text(strip=True)
         buyout_price = prices[1].get_text(strip=True)
 
-        # 詳細ページから作者ID取得
         detail = fetch_html(link)
         author_link = detail.select_one(".user-name a")
         author_id = author_link["href"].split("/")[-1] if author_link else ""
@@ -144,10 +143,11 @@ def fetch_auction_items():
 # 条件判定（全体通知用）
 # ---------------------------------------------------------
 def match_global_conditions(item):
-    # ここにあなたの条件を入れる（例：価格5000円以下）
+    # 既存販売：5000円以下
     if item["sale_type"] == "既存販売":
         return int(item["price"].replace(",", "")) <= 5000
 
+    # オークション：現在 or 即決が5000円以下
     if item["sale_type"] == "オークション":
         now_price = int(item["current_price"].replace(",", ""))
         buy_price = int(item["buyout_price"].replace(",", ""))
