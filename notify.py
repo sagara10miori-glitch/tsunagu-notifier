@@ -13,11 +13,16 @@ WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 def load_last_data():
     if not os.path.exists("last_data.json"):
         return []
-    with open("last_data.json", "r", encoding="utf-8") as f:
-        try:
-            return json.load(f)
-        except:
-            return []
+
+    try:
+        with open("last_data.json", "r", encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, list):
+                return data
+            else:
+                return []  # 辞書などが入っていたら強制リセット
+    except:
+        return []
 
 
 def save_last_data(data):
