@@ -2,7 +2,7 @@ name: tsunagu-notify
 
 on:
   schedule:
-    - cron: "*/30 * * * *"   # 30分間隔
+    - cron: "*/30 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -20,6 +20,8 @@ jobs:
         run: pip install requests beautifulsoup4
 
       - name: Run notifier
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: python notify.py
 
       - name: Commit updated data
