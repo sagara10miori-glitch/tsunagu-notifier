@@ -87,13 +87,36 @@ def fetch_auction_items():
 
     items = []
     for card in cards:
-        link = card.select_one("a")["href"]
-        item_id = link.split("/")[-1]
-        title = card.select_one(".title").get_text(strip=True)
-        img = card.select_one(".image-1-1 img")["src"]
-        author_icon = card.select_one(".avatar img")["src"]
+        # 画像がないカードはスキップ
+        img_tag = card.select_one(".image-1-1 img")
+        if not img_tag:
+            continue
 
+        # リンクがないカードはスキップ
+        link_tag = card.select_one("a")
+        if not link_tag:
+            continue
+
+        link = link_tag["href"]
+        item_id = link.split("/")[-1]
+
+        # タイトルがないカードはスキップ
+        title_tag = card.select_one(".title")
+        if not title_tag:
+            continue
+        title = title_tag.get_text(strip=True)
+
+        img = img_tag["src"]
+
+        # 作者アイコン
+        author_icon_tag = card.select_one(".avatar img")
+        author_icon = author_icon_tag["src"] if author_icon_tag else ""
+
+        # 価格が2つ揃っていないカードはスキップ
         prices = card.select("p.h2")
+        if len(prices) < 2:
+            continue
+
         current_price = prices[0].get_text(strip=True)
         buyout_price = prices[1].get_text(strip=True)
 
