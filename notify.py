@@ -24,6 +24,24 @@ def fetch_html(url):
 
 
 # ---------------------------------------------------------
+# 安定した商品IDを取得（#product / #auction の data-id）
+# ---------------------------------------------------------
+def extract_stable_id(detail_soup, fallback_link):
+    # 既存販売
+    tag = detail_soup.select_one("#product")
+    if tag and tag.has_attr("data-id"):
+        return tag["data-id"]
+
+    # オークション
+    tag = detail_soup.select_one("#auction")
+    if tag and tag.has_attr("data-id"):
+        return tag["data-id"]
+
+    # 最終手段：URL
+    return fallback_link
+
+
+# ---------------------------------------------------------
 # 既存販売の取得（安全版）
 # ---------------------------------------------------------
 def fetch_exist_items():
@@ -33,20 +51,16 @@ def fetch_exist_items():
 
     items = []
     for card in cards:
-        # 画像がないカードはスキップ
         img_tag = card.select_one(".image-1-1 img")
         if not img_tag:
             continue
 
-        # リンクがないカードはスキップ
         link_tag = card.select_one("a")
         if not link_tag:
             continue
 
         link = link_tag["href"]
-        item_id = link.split("/")[-1]
 
-        # タイトルがないカードはスキップ
         title_tag = card.select_one(".title")
         if not title_tag:
             continue
@@ -54,18 +68,19 @@ def fetch_exist_items():
 
         img = img_tag["src"]
 
-        # 作者アイコン
         author_icon_tag = card.select_one(".avatar img")
         author_icon = author_icon_tag["src"] if author_icon_tag else ""
 
-        # 価格
         price_tag = card.select_one(".text-danger")
         price = price_tag.get_text(strip=True) if price_tag else "0"
 
-        # 詳細ページから作者ID取得
+        # 詳細ページから作者IDと安定ID取得
         detail = fetch_html(link)
+
         author_link = detail.select_one(".user-name a")
         author_id = author_link["href"].split("/")[-1] if author_link else ""
+
+        item_id = extract_stable_id(detail, link)
 
         items.append({
             "id": item_id,
@@ -100,7 +115,6 @@ def fetch_auction_items():
             continue
 
         link = link_tag["href"]
-        item_id = link.split("/")[-1]
 
         title_tag = card.select_one(".title")
         if not title_tag:
@@ -112,7 +126,6 @@ def fetch_auction_items():
         author_icon_tag = card.select_one(".avatar img")
         author_icon = author_icon_tag["src"] if author_icon_tag else ""
 
-        # 価格が2つ揃っていないカードはスキップ
         prices = card.select("p.h2")
         if len(prices) < 2:
             continue
@@ -120,9 +133,13 @@ def fetch_auction_items():
         current_price = prices[0].get_text(strip=True)
         buyout_price = prices[1].get_text(strip=True)
 
+        # 詳細ページから作者IDと安定ID取得
         detail = fetch_html(link)
+
         author_link = detail.select_one(".user-name a")
         author_id = author_link["href"].split("/")[-1] if author_link else ""
+
+        item_id = extract_stable_id(detail, link)
 
         items.append({
             "id": item_id,
@@ -143,11 +160,9 @@ def fetch_auction_items():
 # 条件判定（全体通知用）
 # ---------------------------------------------------------
 def match_global_conditions(item):
-    # 既存販売：5000円以下
     if item["sale_type"] == "既存販売":
         return int(item["price"].replace(",", "")) <= 5000
 
-    # オークション：現在 or 即決が5000円以下
     if item["sale_type"] == "オークション":
         now_price = int(item["current_price"].replace(",", ""))
         buy_price = int(item["buyout_price"].replace(",", ""))
@@ -157,13 +172,13 @@ def match_global_conditions(item):
 
 
 # ---------------------------------------------------------
-# バッチ送信
+# バッチ送信（特定ユーザー新着がある場合のみ @everyone）
 # ---------------------------------------------------------
-def send_discord_batch(items, is_first):
+def send_discord_batch(items, has_user_specific):
     if is_quiet_hours():
         mention = ""
     else:
-        mention = "@everyone" if is_first else ""
+        mention = "@everyone" if has_user_specific else ""
 
     separator = "✦━━━━━━━━━━━━✦"
     content = f"{separator}\n{mention}" if mention else separator
@@ -222,7 +237,6 @@ def send_discord_batch(items, is_first):
 # メイン処理
 # ---------------------------------------------------------
 def main():
-    # 既読管理
     last_all = json.load(open("last_all.json")) if os.path.exists("last_all.json") else []
     last_users = json.load(open("last_users.json")) if os.path.exists("last_users.json") else []
 
@@ -231,7 +245,6 @@ def main():
     new_all = []
     new_users = []
 
-    # 取得
     items = fetch_exist_items() + fetch_auction_items()
 
     batch_user_specific = []
@@ -242,13 +255,13 @@ def main():
         is_user_specific = item["author_id"] in users
         item["is_user_specific"] = is_user_specific
 
-        # 特定ユーザー通知（最優先）
+        # 特定ユーザー通知
         if is_user_specific and item["id"] not in last_users:
             batch_user_specific.append(item)
             new_users.append(item["id"])
             continue
 
-        # 全体通知（カテゴリ別）
+        # 全体通知
         if item["id"] not in last_all and match_global_conditions(item):
             if item["sale_type"] == "既存販売":
                 batch_exist.append(item)
@@ -256,15 +269,18 @@ def main():
                 batch_auction.append(item)
             new_all.append(item["id"])
 
-    # 送信順序
+    # 特定ユーザー新着があるか？
+    has_user_specific = len(batch_user_specific) > 0
+
+    # 送信
     if batch_user_specific:
-        send_discord_batch(batch_user_specific, is_first=True)
+        send_discord_batch(batch_user_specific, has_user_specific)
 
     if batch_exist:
-        send_discord_batch(batch_exist, is_first=False)
+        send_discord_batch(batch_exist, has_user_specific)
 
     if batch_auction:
-        send_discord_batch(batch_auction, is_first=False)
+        send_discord_batch(batch_auction, has_user_specific)
 
     # 保存
     json.dump(last_all + new_all, open("last_all.json", "w"))
