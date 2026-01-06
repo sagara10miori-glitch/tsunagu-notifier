@@ -1,148 +1,233 @@
 import requests
-from bs4 import BeautifulSoup
 import json
+from bs4 import BeautifulSoup
+from datetime import datetime, time
 import os
 
-URL = "https://tsunagu.cloud/exist_products?exist_product_category2_id=2&max_sales_count_exist_items=1&is_ai_content=0"
-HEADERS = {"User-Agent": "Mozilla/5.0"}
-
-WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
+WEBHOOK_URL = os.getenv("WEBHOOK_URL")
 
 
-# -------------------------
-# JSON 読み書き
-# -------------------------
-def load_json(path):
-    if not os.path.exists(path):
-        return []
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, list) else []
-    except:
-        return []
+# ---------------------------------------------------------
+# 深夜帯判定（0:30〜7:30 は @everyone を外す）
+# ---------------------------------------------------------
+def is_quiet_hours():
+    now = datetime.now().time()
+    return time(0, 30) <= now <= time(7, 30)
 
 
-def save_json(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+# ---------------------------------------------------------
+# HTML取得
+# ---------------------------------------------------------
+def fetch_html(url):
+    r = requests.get(url, timeout=10)
+    return BeautifulSoup(r.text, "html.parser")
 
 
-# -------------------------
-# users.txt 読み込み
-# -------------------------
-def load_users():
-    if not os.path.exists("users.txt"):
-        return []
-    with open("users.txt", "r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
-
-
-# -------------------------
-# 価格抽出
-# -------------------------
-def extract_price(text):
-    return int(text.replace("円", "").replace(",", "").strip())
-
-
-# -------------------------
-# Discord 通知
-# -------------------------
-def send_discord(item, is_first):
-    content = "@everyone" if is_first else ""
-
-    embed = {
-        "title": item["title"],
-        "url": item["link"],
-        "color": 0x5EB7E8,  # 統一カラー
-        "image": {"url": item["img"]},
-        "fields": [
-            {"name": "価格", "value": f"{item['price']}円", "inline": True},
-            {"name": "作者", "value": item["author"], "inline": True},
-            {"name": "URL", "value": item["link"], "inline": False},
-        ]
-    }
-
-    data = {"content": content, "embeds": [embed]}
-    requests.post(WEBHOOK_URL, json=data)
-
-
-# -------------------------
-# 商品取得（スクレイピング）
-# -------------------------
-def fetch_items():
-    res = requests.get(URL, headers=HEADERS)
-    soup = BeautifulSoup(res.text, "html.parser")
+# ---------------------------------------------------------
+# 既存販売の取得
+# ---------------------------------------------------------
+def fetch_exist_items():
+    url = "https://tsunagu.cloud/products"
+    soup = fetch_html(url)
+    cards = soup.select(".p-product")
 
     items = []
-
-    for card in soup.select(".p-product"):
-        a = card.select_one("a")
-        link = a["href"]
-
-        img = card.select_one(".image-1-1 img")["src"]
-        title = card.select_one(".title").get_text(strip=True)
-        price_text = card.select_one(".h3").get_text(strip=True)
-        price = extract_price(price_text)
-
-        author = card.select_one(".user-name").get_text(strip=True)
-        author_id = card.select_one(".user-name a")["href"].split("/")[-1]
-
+    for card in cards:
+        link = card.select_one("a")["href"]
         item_id = link.split("/")[-1]
+        title = card.select_one(".title").get_text(strip=True)
+        img = card.select_one(".image-1-1 img")["src"]
+        author_icon = card.select_one(".avatar img")["src"]
+        price = card.select_one(".text-danger").get_text(strip=True)
+
+        # 詳細ページから作者ID取得
+        detail = fetch_html(link)
+        author_link = detail.select_one(".user-name a")
+        author_id = author_link["href"].split("/")[-1] if author_link else ""
 
         items.append({
             "id": item_id,
             "title": title,
+            "img": img,
             "price": price,
             "link": link,
-            "img": img,
-            "author": author,
-            "author_id": author_id
+            "author_icon": author_icon,
+            "author_id": author_id,
+            "sale_type": "既存販売"
         })
 
     return items
 
 
-# -------------------------
-# 全体条件フィルタ
-# -------------------------
+# ---------------------------------------------------------
+# オークションの取得
+# ---------------------------------------------------------
+def fetch_auction_items():
+    url = "https://tsunagu.cloud/auctions"
+    soup = fetch_html(url)
+    cards = soup.select(".p-product")
+
+    items = []
+    for card in cards:
+        link = card.select_one("a")["href"]
+        item_id = link.split("/")[-1]
+        title = card.select_one(".title").get_text(strip=True)
+        img = card.select_one(".image-1-1 img")["src"]
+        author_icon = card.select_one(".avatar img")["src"]
+
+        prices = card.select("p.h2")
+        current_price = prices[0].get_text(strip=True)
+        buyout_price = prices[1].get_text(strip=True)
+
+        # 詳細ページから作者ID取得
+        detail = fetch_html(link)
+        author_link = detail.select_one(".user-name a")
+        author_id = author_link["href"].split("/")[-1] if author_link else ""
+
+        items.append({
+            "id": item_id,
+            "title": title,
+            "img": img,
+            "current_price": current_price,
+            "buyout_price": buyout_price,
+            "link": link,
+            "author_icon": author_icon,
+            "author_id": author_id,
+            "sale_type": "オークション"
+        })
+
+    return items
+
+
+# ---------------------------------------------------------
+# 条件判定（全体通知用）
+# ---------------------------------------------------------
 def match_global_conditions(item):
-    return item["price"] <= 5000
+    # ここにあなたの条件を入れる（例：価格5000円以下）
+    if item["sale_type"] == "既存販売":
+        return int(item["price"].replace(",", "")) <= 5000
+
+    if item["sale_type"] == "オークション":
+        now_price = int(item["current_price"].replace(",", ""))
+        buy_price = int(item["buyout_price"].replace(",", ""))
+        return now_price <= 5000 or buy_price <= 5000
+
+    return False
 
 
-# -------------------------
-# メイン処理
-# -------------------------
-def main():
-    users = load_users()
+# ---------------------------------------------------------
+# バッチ送信
+# ---------------------------------------------------------
+def send_discord_batch(items, is_first):
+    if is_quiet_hours():
+        mention = ""
+    else:
+        mention = "@everyone" if is_first else ""
 
-    last_all = load_json("last_data_all.json")
-    last_users = load_json("last_data_users.json")
+    separator = "✦━━━━━━━━━━━━✦"
+    content = f"{separator}\n{mention}" if mention else separator
 
-    items = fetch_items()
-
-    is_first_all = (len(last_all) == 0)
-    is_first_users = (len(last_users) == 0)
-
-    new_all = last_all.copy()
-    new_users = last_users.copy()
+    embeds = []
 
     for item in items:
+        # 色分け
+        if item["sale_type"] == "既存販売":
+            base_color = 0x5EB7E8
+        elif item["sale_type"] == "オークション":
+            base_color = 0x0033AA
+        else:
+            base_color = 0x5EB7E8
 
-        # --- 全体条件 ---
-        if item["id"] not in last_all and match_global_conditions(item):
-            send_discord(item, is_first_all)
-            new_all.append(item["id"])
-            is_first_all = False
+        color = 0xFFA500 if item["is_user_specific"] else base_color
 
-        # --- 特定ユーザー条件 ---
-        if item["author_id"] in users and item["id"] not in last_users:
-            send_discord(item, is_first_users)
+        embed = {
+            "title": item["title"],
+            "url": item["link"],
+            "color": color,
+            "author": {
+                "name": "",
+                "icon_url": item["author_icon"]
+            },
+            "image": {"url": item["img"]},
+            "fields": [
+                {"name": "販売形式", "value": item["sale_type"], "inline": True},
+            ]
+        }
+
+        if item["sale_type"] == "既存販売":
+            embed["fields"].append(
+                {"name": "価格", "value": f"{item['price']}円", "inline": True}
+            )
+
+        if item["sale_type"] == "オークション":
+            embed["fields"].append(
+                {"name": "現在価格", "value": f"{item['current_price']}円", "inline": True}
+            )
+            embed["fields"].append(
+                {"name": "即決価格", "value": f"{item['buyout_price']}円", "inline": True}
+            )
+
+        embed["fields"].append(
+            {"name": "URL", "value": item["link"], "inline": False}
+        )
+
+        embeds.append(embed)
+
+    data = {"content": content, "embeds": embeds}
+    requests.post(WEBHOOK_URL, json=data)
+
+
+# ---------------------------------------------------------
+# メイン処理
+# ---------------------------------------------------------
+def main():
+    # 既読管理
+    last_all = json.load(open("last_all.json")) if os.path.exists("last_all.json") else []
+    last_users = json.load(open("last_users.json")) if os.path.exists("last_users.json") else []
+
+    users = [u.strip() for u in open("users.txt").read().splitlines()]
+
+    new_all = []
+    new_users = []
+
+    # 取得
+    items = fetch_exist_items() + fetch_auction_items()
+
+    batch_user_specific = []
+    batch_exist = []
+    batch_auction = []
+
+    for item in items:
+        is_user_specific = item["author_id"] in users
+        item["is_user_specific"] = is_user_specific
+
+        # 特定ユーザー通知（最優先）
+        if is_user_specific and item["id"] not in last_users:
+            batch_user_specific.append(item)
             new_users.append(item["id"])
-            is_first_users = False
+            continue
 
-    save_json("last_data_all.json", new_all)
-    save_json("last_data_users.json", new_users)
+        # 全体通知（カテゴリ別）
+        if item["id"] not in last_all and match_global_conditions(item):
+            if item["sale_type"] == "既存販売":
+                batch_exist.append(item)
+            elif item["sale_type"] == "オークション":
+                batch_auction.append(item)
+            new_all.append(item["id"])
+
+    # 送信順序
+    if batch_user_specific:
+        send_discord_batch(batch_user_specific, is_first=True)
+
+    if batch_exist:
+        send_discord_batch(batch_exist, is_first=False)
+
+    if batch_auction:
+        send_discord_batch(batch_auction, is_first=False)
+
+    # 保存
+    json.dump(last_all + new_all, open("last_all.json", "w"))
+    json.dump(last_users + new_users, open("last_users.json", "w"))
 
 
 if __name__ == "__main__":
