@@ -1,0 +1,31 @@
+name: tsunagu-notify
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"   # 30分間隔
+  workflow_dispatch:
+
+jobs:
+  tsunagu:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Tsunagu notifier
+        run: python tsunagu_notify.py
+
+      - name: Commit updated data
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add -A
+          git commit -m "Update Tsunagu data" || echo "No changes"
+          git push
