@@ -3,6 +3,7 @@ import json
 from bs4 import BeautifulSoup
 from datetime import datetime, time
 import os
+import re
 
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 
@@ -39,6 +40,14 @@ def fetch_html(url):
 # ---------------------------------------------------------
 def extract_stable_id_from_url(url):
     return url.rstrip("/").split("/")[-1]
+
+
+# ---------------------------------------------------------
+# 数字以外をすべて除去して int に変換（最強版）
+# ---------------------------------------------------------
+def to_number(text):
+    num = re.sub(r"\D", "", text)
+    return int(num) if num else 0
 
 
 # ---------------------------------------------------------
@@ -167,12 +176,13 @@ def fetch_auction_items():
 # ---------------------------------------------------------
 def match_global_conditions(item):
     if item["sale_type"] == "既存販売":
-        return int(item["price"].replace(",", "")) <= 5000
+        return to_number(item["price"]) <= 5000
 
     if item["sale_type"] == "オークション":
-        now_price = int(item["current_price"].replace(",", ""))
-        buy_price = int(item["buyout_price"].replace(",", ""))
-        return now_price <= 5000 or buy_price <= 5000
+        return (
+            to_number(item["current_price"]) <= 5000 or
+            to_number(item["buyout_price"]) <= 5000
+        )
 
     return False
 
@@ -210,15 +220,15 @@ def send_discord_batch(items):
 
         if item["sale_type"] == "既存販売":
             embed["fields"].append(
-                {"name": "価格", "value": f"{item['price']}円", "inline": True}
+                {"name": "価格", "value": f"{item['price']}", "inline": True}
             )
 
         if item["sale_type"] == "オークション":
             embed["fields"].append(
-                {"name": "現在価格", "value": f"{item['current_price']}円", "inline": True}
+                {"name": "現在価格", "value": f"{item['current_price']}", "inline": True}
             )
             embed["fields"].append(
-                {"name": "即決価格", "value": f"{item['buyout_price']}円", "inline": True}
+                {"name": "即決価格", "value": f"{item['buyout_price']}", "inline": True}
             )
 
         embed["fields"].append(
