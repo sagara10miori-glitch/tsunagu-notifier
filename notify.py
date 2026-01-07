@@ -42,10 +42,10 @@ def extract_stable_id_from_url(url):
 
 
 # ---------------------------------------------------------
-# 既存販売の取得（安全版）
+# 既存販売の取得（価格取得を強化）
 # ---------------------------------------------------------
 def fetch_exist_items():
-    url = "https://tsunagu.cloud/products"
+    url = "https://tsunagu.cloud/exist_products"
     soup = fetch_html(url)
     cards = soup.select(".p-product")
 
@@ -72,8 +72,20 @@ def fetch_exist_items():
         author_icon_tag = card.select_one(".avatar img")
         author_icon = author_icon_tag["src"] if author_icon_tag else ""
 
-        price_tag = card.select_one(".text-danger")
-        price = price_tag.get_text(strip=True) if price_tag else "0"
+        # --- 価格取得を強化（DOM変更に対応） ---
+        price_tag = (
+            card.select_one(".text-danger") or
+            card.select_one(".price") or
+            card.select_one(".text-primary") or
+            card.select_one(".h3") or
+            card.select_one(".h2") or
+            card.select_one(".value")
+        )
+
+        if not price_tag:
+            continue
+
+        price = price_tag.get_text(strip=True)
 
         detail = fetch_html(link)
         author_link = detail.select_one(".user-name a")
