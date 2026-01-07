@@ -2,14 +2,16 @@ name: Tsunagu Notifier
 
 on:
   schedule:
-    - cron: "*/5 * * * *"
-  workflow_dispatch:
+    - cron: "*/5 * * * *"   # 5分ごとに実行
+  workflow_dispatch:        # 手動実行も可能
 
 jobs:
-  run:
+  run-notifier:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -17,9 +19,19 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests beautifulsoup4
+        run: |
+          pip install requests beautifulsoup4
 
-      - name: Run notify
+      - name: Run notifier
         env:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: python notify.py
+        run: |
+          python notify.py
+
+      - name: Commit updated JSON files
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "GitHub Actions"
+          git add last_all.json last_special.json
+          git commit -m "Update last_all.json and last_special.json" || echo "No changes to commit"
+          git push
