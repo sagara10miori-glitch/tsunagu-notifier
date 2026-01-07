@@ -34,14 +34,10 @@ def to_number(text):
     return int(num) if num else 0
 
 
-# ---------------------------------------------------------
-# 既存販売（カード本体セレクタ修正済み）
-# ---------------------------------------------------------
 def fetch_exist_items():
     url = "https://tsunagu.cloud/exist_products?page=1"
     soup = fetch_html(url)
 
-    # ★ 正しいカード本体
     cards = soup.select(".col-6.col-xl-4.col-sm-6.d-flex.mb-0.p-1")
 
     items = []
@@ -92,9 +88,6 @@ def fetch_exist_items():
     return items
 
 
-# ---------------------------------------------------------
-# オークション（こちらもカード本体セレクタに統一）
-# ---------------------------------------------------------
 def fetch_auction_items():
     url = "https://tsunagu.cloud/auctions?page=1"
     soup = fetch_html(url)
@@ -151,12 +144,9 @@ def fetch_auction_items():
     return items
 
 
-# ---------------------------------------------------------
-# 通知条件
-# ---------------------------------------------------------
 def match_global_conditions(item):
     if item["sale_type"] == "既存販売":
-        return to_number(item["price"]) <= 8000  # ← 8000円以下に緩和済み
+        return to_number(item["price"]) <= 8000
 
     if item["sale_type"] == "オークション":
         return (
@@ -167,9 +157,6 @@ def match_global_conditions(item):
     return False
 
 
-# ---------------------------------------------------------
-# 通常通知
-# ---------------------------------------------------------
 def send_discord_batch(items):
     mention = "" if is_quiet_hours() else "@everyone"
 
@@ -203,10 +190,10 @@ def send_discord_batch(items):
     requests.post(WEBHOOK_URL, json=data)
 
 
-# ---------------------------------------------------------
-# 特別ユーザー通知
-# ---------------------------------------------------------
 def send_special_batch(items):
+    # ★ 深夜帯は @everyone を外す
+    mention = "" if is_quiet_hours() else "@everyone"
+
     embeds = []
     for item in items:
         embed = {
@@ -222,13 +209,10 @@ def send_special_batch(items):
         }
         embeds.append(embed)
 
-    data = {"content": "@everyone", "embeds": embeds}
+    data = {"content": mention, "embeds": embeds}
     requests.post(WEBHOOK_URL, json=data)
 
 
-# ---------------------------------------------------------
-# メイン処理
-# ---------------------------------------------------------
 def main():
     last_all = json.load(open("last_all.json")) if os.path.exists("last_all.json") else []
     last_special = json.load(open("last_special.json")) if os.path.exists("last_special.json") else []
