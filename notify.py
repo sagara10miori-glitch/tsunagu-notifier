@@ -51,10 +51,10 @@ def to_number(text):
 
 
 # ---------------------------------------------------------
-# 既存販売の取得（価格取得を強化）
+# 既存販売の取得（1ページ目のみ / DOM変更に強い）
 # ---------------------------------------------------------
 def fetch_exist_items():
-    url = "https://tsunagu.cloud/exist_products"
+    url = "https://tsunagu.cloud/exist_products?page=1"
     soup = fetch_html(url)
     cards = soup.select(".p-product")
 
@@ -81,7 +81,7 @@ def fetch_exist_items():
         author_icon_tag = card.select_one(".avatar img")
         author_icon = author_icon_tag["src"] if author_icon_tag else ""
 
-        # --- 価格取得を強化（DOM変更に対応） ---
+        # --- 価格取得（DOM変更に強い） ---
         price_tag = (
             card.select_one(".text-danger") or
             card.select_one(".price") or
@@ -115,10 +115,10 @@ def fetch_exist_items():
 
 
 # ---------------------------------------------------------
-# オークションの取得（安全版）
+# オークションの取得（1ページ目のみ）
 # ---------------------------------------------------------
 def fetch_auction_items():
-    url = "https://tsunagu.cloud/auctions"
+    url = "https://tsunagu.cloud/auctions?page=1"
     soup = fetch_html(url)
     cards = soup.select(".p-product")
 
