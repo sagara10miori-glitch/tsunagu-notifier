@@ -34,42 +34,41 @@ def to_number(text):
     return int(num) if num else 0
 
 
+# ---------------------------------------------------------
+# 既存販売（カード本体セレクタ修正済み）
+# ---------------------------------------------------------
 def fetch_exist_items():
     url = "https://tsunagu.cloud/exist_products?page=1"
     soup = fetch_html(url)
-    cards = soup.select(".p-product")
+
+    # ★ 正しいカード本体
+    cards = soup.select(".col-6.col-xl-4.col-sm-6.d-flex.mb-0.p-1")
 
     items = []
     for card in cards:
-        img_tag = card.select_one(".image-1-1 img")
-        if not img_tag:
+        inner = card.select_one(".p-product")
+        if not inner:
             continue
 
-        link_tag = card.select_one("a")
+        link_tag = inner.select_one("a")
         if not link_tag:
             continue
 
         link = link_tag["href"]
         item_id = extract_stable_id_from_url(link)
 
-        title_tag = card.select_one(".title")
+        title_tag = inner.select_one(".title")
         if not title_tag:
             continue
         title = title_tag.get_text(strip=True)
 
-        img = img_tag["src"]
+        img_tag = inner.select_one(".image-1-1 img")
+        img = img_tag["src"] if img_tag else ""
 
-        author_icon_tag = card.select_one(".avatar img")
+        author_icon_tag = inner.select_one(".avatar img")
         author_icon = author_icon_tag["src"] if author_icon_tag else ""
 
-        price_tag = (
-            card.select_one(".text-danger") or
-            card.select_one(".price") or
-            card.select_one(".text-primary") or
-            card.select_one(".h3") or
-            card.select_one(".h2") or
-            card.select_one(".value")
-        )
+        price_tag = inner.select_one(".h3")
         if not price_tag:
             continue
 
@@ -93,35 +92,40 @@ def fetch_exist_items():
     return items
 
 
+# ---------------------------------------------------------
+# オークション（こちらもカード本体セレクタに統一）
+# ---------------------------------------------------------
 def fetch_auction_items():
     url = "https://tsunagu.cloud/auctions?page=1"
     soup = fetch_html(url)
-    cards = soup.select(".p-product")
+
+    cards = soup.select(".col-6.col-xl-4.col-sm-6.d-flex.mb-0.p-1")
 
     items = []
     for card in cards:
-        img_tag = card.select_one(".image-1-1 img")
-        if not img_tag:
+        inner = card.select_one(".p-product")
+        if not inner:
             continue
 
-        link_tag = card.select_one("a")
+        link_tag = inner.select_one("a")
         if not link_tag:
             continue
 
         link = link_tag["href"]
         item_id = extract_stable_id_from_url(link)
 
-        title_tag = card.select_one(".title")
+        title_tag = inner.select_one(".title")
         if not title_tag:
             continue
         title = title_tag.get_text(strip=True)
 
-        img = img_tag["src"]
+        img_tag = inner.select_one(".image-1-1 img")
+        img = img_tag["src"] if img_tag else ""
 
-        author_icon_tag = card.select_one(".avatar img")
+        author_icon_tag = inner.select_one(".avatar img")
         author_icon = author_icon_tag["src"] if author_icon_tag else ""
 
-        prices = card.select("p.h2")
+        prices = inner.select("p.h2")
         if len(prices) < 2:
             continue
 
@@ -147,9 +151,12 @@ def fetch_auction_items():
     return items
 
 
+# ---------------------------------------------------------
+# 通知条件
+# ---------------------------------------------------------
 def match_global_conditions(item):
     if item["sale_type"] == "既存販売":
-        return to_number(item["price"]) <= 5000
+        return to_number(item["price"]) <= 8000  # ← 8000円以下に緩和済み
 
     if item["sale_type"] == "オークション":
         return (
@@ -160,6 +167,9 @@ def match_global_conditions(item):
     return False
 
 
+# ---------------------------------------------------------
+# 通常通知
+# ---------------------------------------------------------
 def send_discord_batch(items):
     mention = "" if is_quiet_hours() else "@everyone"
 
@@ -193,6 +203,9 @@ def send_discord_batch(items):
     requests.post(WEBHOOK_URL, json=data)
 
 
+# ---------------------------------------------------------
+# 特別ユーザー通知
+# ---------------------------------------------------------
 def send_special_batch(items):
     embeds = []
     for item in items:
@@ -213,6 +226,9 @@ def send_special_batch(items):
     requests.post(WEBHOOK_URL, json=data)
 
 
+# ---------------------------------------------------------
+# メイン処理
+# ---------------------------------------------------------
 def main():
     last_all = json.load(open("last_all.json")) if os.path.exists("last_all.json") else []
     last_special = json.load(open("last_special.json")) if os.path.exists("last_special.json") else []
