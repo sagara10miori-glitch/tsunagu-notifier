@@ -1,7 +1,7 @@
 import requests
 import json
 from bs4 import BeautifulSoup
-from datetime import datetime, time
+from datetime import datetime, time, timedelta, timezone
 import os
 import re
 
@@ -9,14 +9,21 @@ WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK")
 
 TARGET_USER = "fruit_fulful"
 
+# ★ JST タイムゾーン
+JST = timezone(timedelta(hours=9))
+
+
+def now_jst():
+    return datetime.now(JST)
+
 
 def is_quiet_hours():
-    now = datetime.now().time()
+    now = now_jst().time()
     return time(0, 30) <= now <= time(7, 30)
 
 
 def is_special_time():
-    now = datetime.now()
+    now = now_jst()
     return now.weekday() == 6 and time(21, 0) <= now.time() <= time(22, 0)
 
 
@@ -191,7 +198,7 @@ def send_discord_batch(items):
 
 
 def send_special_batch(items):
-    # ★ 深夜帯は @everyone を外す
+    # ★ JST 深夜帯は @everyone を外す
     mention = "" if is_quiet_hours() else "@everyone"
 
     embeds = []
