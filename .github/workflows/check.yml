@@ -1,50 +1,45 @@
-name: Tsunagu Notifier
+name: Check Tsunagu
 
 on:
   schedule:
-    # 深夜帯（JST 2:00〜6:00）→ 30分ごと
-    # UTC 17:00〜21:00
-    - cron: "0,30 17-21 * * *"
+    # 通常時間帯（6:00〜2:00）→ 3分間隔
+    - cron: "*/3 6-23 * * *"
+    - cron: "*/3 0-1 * * *"
 
-    # それ以外（JST 6:00〜24:00）→ 3分ごと
-    # UTC 21:00〜24:00
-    - cron: "*/3 21-23 * * *"
-    # UTC 0:00〜15:00
-    - cron: "*/3 0-15 * * *"
+    # 深夜帯（2:00〜6:00）→ 30分間隔
+    - cron: "0,30 2-5 * * *"
 
-    # JST 0:00〜2:00 → 3分ごと
-    # UTC 15:00〜17:00（ただし 17〜21 は深夜帯なので除外）
-    - cron: "*/3 15-16 * * *"
+    # 朝6:00のまとめ通知
+    - cron: "0 6 * * *"
 
   workflow_dispatch:
 
 jobs:
-  run-notifier:
+  check:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v3
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: "pip"
 
       - name: Install dependencies
-        run: |
-          pip install requests beautifulsoup4
+        run: pip install -r requirements.txt
 
-      - name: Run notifier
+      - name: Run notify
         env:
-          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
-        run: |
-          python notify.py
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+        run: python notify.py
 
-      - name: Commit updated JSON files
+      - name: Commit changes
         run: |
-          git config --local user.email "actions@github.com"
-          git config --local user.name "GitHub Actions"
-          git add last_all.json last_special.json
-          git commit -m "Update last_all.json and last_special.json" || echo "No changes to commit"
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add .
+          git diff --cached --quiet || git commit -m "Update data"
           git push
