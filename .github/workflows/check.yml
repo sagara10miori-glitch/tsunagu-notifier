@@ -1,15 +1,14 @@
 name: Check Tsunagu
 
+concurrency:
+  group: tsunagu-notifier
+  cancel-in-progress: true
+
 on:
   schedule:
-    # 通常時間帯（6:00〜2:00）→ 3分間隔
     - cron: "*/3 6-23 * * *"
     - cron: "*/3 0-1 * * *"
-
-    # 深夜帯（2:00〜6:00）→ 30分間隔
     - cron: "0,30 2-5 * * *"
-
-    # 朝6:00のまとめ通知
     - cron: "0 6 * * *"
 
   workflow_dispatch:
