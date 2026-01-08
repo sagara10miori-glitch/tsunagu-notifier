@@ -58,7 +58,6 @@ def is_morning_summary():
 def parse_items(soup, mode):
     items = []
 
-    # つなぐの最新構造に合わせる
     cards = soup.select(".p-product")
 
     for c in cards:
@@ -66,21 +65,9 @@ def parse_items(soup, mode):
         title_tag = c.select_one(".title")
         title = title_tag.text.strip() if title_tag else ""
 
-        # 作者アイコン → 作者名は取得できないのでURLを代用
-        author_img = c.select_one(".p-profile img")
-        author = author_img["src"] if author_img else ""
-
-        # 価格（既存販売）
-        price_tag = c.select_one(".h3")
-        # 価格（オークション）
-        price_tag2 = c.select_one(".text-danger")
-
-        if price_tag2:
-            price = price_tag2.text.strip()
-        elif price_tag:
-            price = price_tag.text.strip()
-        else:
-            price = ""
+        # 価格（既存販売 or オークション）
+        price_tag = c.select_one(".text-danger") or c.select_one(".h3")
+        price = price_tag.text.strip() if price_tag else ""
 
         # サムネイル
         thumb_tag = c.select_one(".image-1-1 img")
@@ -92,7 +79,6 @@ def parse_items(soup, mode):
 
         items.append({
             "title": title,
-            "author": author,
             "price": price,
             "thumb": thumb,
             "url": url,
@@ -112,18 +98,31 @@ def build_embed(item, is_special):
         COLOR_EXIST if item["mode"] == "exist" else COLOR_AUCTION
     )
 
+    # 販売形式
+    sale_type = "既存販売" if item["mode"] == "exist" else "オークション"
+
+    # 即決価格（存在する場合のみ）
+    buy_now = item.get("buy_now")
+    buy_now_field = []
+    if buy_now:
+        buy_now_field = [{"name": "即決価格", "value": buy_now, "inline": True}]
+
     return {
         "title": item["title"],
         "url": short_url,
         "color": color,
-        "thumbnail": {"url": item["thumb"]},
-        "fields": [
-            {"name": "作者", "value": item["author"], "inline": True},
-            {"name": "価格", "value": item["price"], "inline": True},
-            {"name": "カテゴリ", "value": "既存販売" if item["mode"] == "exist" else "オークション", "inline": True}
-        ]
-    }
 
+        # URL → 販売形式 → 価格 → 即決価格（あれば）
+        "fields": [
+            {"name": "URL", "value": short_url, "inline": False},
+            {"name": "販売形式", "value": sale_type, "inline": True},
+            {"name": "価格", "value": item["price"], "inline": True},
+            *buy_now_field
+        ],
+
+        # 大きく表示される画像
+        "image": {"url": item["thumb"]}
+    }
 
 # -----------------------------
 # メイン処理
