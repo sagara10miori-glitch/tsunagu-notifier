@@ -56,25 +56,39 @@ def is_morning_summary():
 # HTML解析（つなぐ専用）
 # -----------------------------
 def parse_items(soup, mode):
-    """
-    mode: "exist" or "auction"
-    """
     items = []
 
-    cards = soup.select(".product-card, .auction-card")
+    # つなぐの最新構造に合わせる
+    cards = soup.select(".p-product")
+
     for c in cards:
-        title = c.select_one(".product-title, .auction-title")
-        author = c.select_one(".product-author, .auction-author")
-        price = c.select_one(".product-price, .auction-price")
-        thumb = c.select_one("img")
+        # タイトル
+        title_tag = c.select_one(".title")
+        title = title_tag.text.strip() if title_tag else ""
 
-        title = title.text.strip() if title else ""
-        author = author.text.strip() if author else ""
-        price = price.text.strip() if price else ""
-        thumb = thumb["src"] if thumb else ""
+        # 作者アイコン → 作者名は取得できないのでURLを代用
+        author_img = c.select_one(".p-profile img")
+        author = author_img["src"] if author_img else ""
 
+        # 価格（既存販売）
+        price_tag = c.select_one(".h3")
+        # 価格（オークション）
+        price_tag2 = c.select_one(".text-danger")
+
+        if price_tag2:
+            price = price_tag2.text.strip()
+        elif price_tag:
+            price = price_tag.text.strip()
+        else:
+            price = ""
+
+        # サムネイル
+        thumb_tag = c.select_one(".image-1-1 img")
+        thumb = thumb_tag["src"] if thumb_tag else ""
+
+        # URL
         url_tag = c.select_one("a")
-        url = "https://tsunagu.cloud" + url_tag["href"] if url_tag else ""
+        url = url_tag["href"] if url_tag else ""
 
         items.append({
             "title": title,
