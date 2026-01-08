@@ -218,4 +218,5 @@ def main():
 # 実行
 # -----------------------------
 if __name__ == "__main__":
+    print("WEBHOOK_URL:", repr(WEBHOOK_URL))
     safe_run(main)
