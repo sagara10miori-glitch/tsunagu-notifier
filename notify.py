@@ -66,8 +66,14 @@ def parse_items(soup, mode):
         title = title_tag.text.strip() if title_tag else ""
 
         # 価格（既存販売 or オークション）
+        # オークション：現在価格 = .text-danger
+        # 既存販売：価格 = .h3
         price_tag = c.select_one(".text-danger") or c.select_one(".h3")
         price = price_tag.text.strip() if price_tag else ""
+
+        # 即決価格（オークションのみ）
+        buy_now_tag = c.select_one(".small .h2:not(.text-danger)")
+        buy_now = buy_now_tag.text.strip() if buy_now_tag else None
 
         # サムネイル
         thumb_tag = c.select_one(".image-1-1 img")
@@ -80,6 +86,7 @@ def parse_items(soup, mode):
         items.append({
             "title": title,
             "price": price,
+            "buy_now": buy_now,
             "thumb": thumb,
             "url": url,
             "mode": mode
