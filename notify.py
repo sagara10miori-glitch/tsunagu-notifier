@@ -118,6 +118,7 @@ def main():
     # -----------------------------
     # データ読み込み
     # -----------------------------
+    print("WEBHOOK_URL:", repr(WEBHOOK_URL))
     last_all = load_json(DATA_LAST_ALL, default={})
     last_special = load_json(DATA_LAST_SPECIAL, default={})
 
@@ -218,5 +219,4 @@ def main():
 # 実行
 # -----------------------------
 if __name__ == "__main__":
-    print("WEBHOOK_URL:", repr(WEBHOOK_URL))
     safe_run(main)
