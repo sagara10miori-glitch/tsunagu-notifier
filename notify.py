@@ -178,30 +178,30 @@ def main():
     # -----------------------------
     embeds_to_send = []
 
-   for item in new_items:
-    h = generate_item_hash(item["title"], "", item["price"], item["url"])
+    for item in new_items:
+        h = generate_item_hash(item["title"], "", item["price"], item["url"])
 
-    # 通常ユーザー（作者名は使わない）
-    if h in last_all:
-        continue
+        # カテゴリ分類
+        category = classify_item(item["title"], "", [])
+        if category == "除外":
+            continue
 
-    # カテゴリ分類
-    category = classify_item(item["title"], "", [])
-    if category == "除外":
-        continue
+        # 既に通知済み
+        if h in last_all:
+            continue
 
-    # 深夜帯 → pending に保存
-    if is_night():
-        if item["mode"] == "exist":
-            append_json_list(DATA_PENDING_EXIST, item)
-        else:
-            append_json_list(DATA_PENDING_AUCTION, item)
+        # 深夜帯 → pending に保存
+        if is_night():
+            if item["mode"] == "exist":
+                append_json_list(DATA_PENDING_EXIST, item)
+            else:
+                append_json_list(DATA_PENDING_AUCTION, item)
+            last_all[h] = True
+            continue
+
+        # 即時通知
+        embeds_to_send.append(build_embed(item, is_special=False))
         last_all[h] = True
-        continue
-
-    # 即時通知
-    embeds_to_send.append(build_embed(item, is_special=False))
-    last_all[h] = True
        
     # -----------------------------
     # 通知送信
