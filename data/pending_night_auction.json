@@ -38,5 +38,13 @@
     "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/mI6hacoOz3dxlIiluBgGZeBGEcsTznLemRMEp7pHKmiNZl8Nhh.png",
     "url": "https://tsunagu.cloud/auctions/22165",
     "mode": "auction"
+  },
+  {
+    "title": "【Adopt】魔法使いの女の子",
+    "price": "15,000",
+    "buy_now": null,
+    "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/YAfzaZrstohVVXXM4P9EYEJn8ZTf0HAIRAkVFxqmw5PNqKh8Si.png",
+    "url": "https://tsunagu.cloud/auctions/22183",
+    "mode": "auction"
   }
 ]
