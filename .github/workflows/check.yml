@@ -6,12 +6,8 @@ concurrency:
 
 on:
   schedule:
-    # 24時間ずっと5分ごとに実行（UTCでもJSTでも関係なく5分ごと）
-    - cron: "*/5 * * * *"
-
-    # JST 6:00 のまとめ通知（UTC 21:00）
-    - cron: "0 21 * * *"
-
+    - cron: "*/5 * * * *"   # 24時間5分ごと
+    - cron: "0 21 * * *"    # JST 6:00 のまとめ通知（UTC 21:00）
   workflow_dispatch:
 
 jobs:
