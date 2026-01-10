@@ -102,13 +102,5 @@
     "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/eWhKeHFG1OIe2rRxpT9mgDfHPa0zHognk1x8C6UrwD7s74JQ8N.png",
     "url": "https://tsunagu.cloud/auctions/22225",
     "mode": "auction"
-  },
-  {
-    "title": "女学生",
-    "price": "4,600",
-    "buy_now": null,
-    "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/stIV3T7SCnIacfoLRX74B05Vr4SrSlz4QKGtUTjqBJzqH6tLvK.png",
-    "url": "https://tsunagu.cloud/auctions/22224",
-    "mode": "auction"
   }
 ]
