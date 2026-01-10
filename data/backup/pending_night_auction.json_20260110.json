@@ -110,5 +110,13 @@
     "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/stIV3T7SCnIacfoLRX74B05Vr4SrSlz4QKGtUTjqBJzqH6tLvK.png",
     "url": "https://tsunagu.cloud/auctions/22224",
     "mode": "auction"
+  },
+  {
+    "title": "女性キャラ3種セット",
+    "price": "10,000",
+    "buy_now": null,
+    "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/kpNh4SafRqiCIQabcsb5KxFC7Ica3dfjzjhOHTuy.png",
+    "url": "https://tsunagu.cloud/auctions/22234",
+    "mode": "auction"
   }
 ]

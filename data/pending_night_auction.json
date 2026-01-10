@@ -118,5 +118,13 @@
     "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/kpNh4SafRqiCIQabcsb5KxFC7Ica3dfjzjhOHTuy.png",
     "url": "https://tsunagu.cloud/auctions/22234",
     "mode": "auction"
+  },
+  {
+    "title": "和装獣人ちゃん【表情9種類】",
+    "price": "2,500",
+    "buy_now": "4,000",
+    "thumb": "https://prod-tsunagu.s3.ap-northeast-1.amazonaws.com/public/product_images/tw1UuO5J1hhpsPNa9Nrzool8QIYOYNuEaIusVKjQ.png",
+    "url": "https://tsunagu.cloud/auctions/22235",
+    "mode": "auction"
   }
 ]
