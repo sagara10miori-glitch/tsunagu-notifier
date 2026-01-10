@@ -156,7 +156,7 @@ def main():
     html_exist = fetch_html(URL_EXIST)
     html_auction = fetch_html(URL_AUCTION)
 
-    # ★★★ debug HTML 保存（あなたの要望） ★★★
+    # ★★★ debug HTML 保存 ★★★
     with open("debug_exist.html", "w", encoding="utf-8") as f:
         f.write(html_exist)
 
@@ -209,7 +209,7 @@ def main():
     # 通知送信
     # -----------------------------
     if embeds_to_send:
-        send_discord(WEBHOOK_URL, content="🔔 新着通知", embeds=embeds_to_send)
+        send_discord(WEBHOOK_URL, content="🔔 つなぐ　新着通知", embeds=embeds_to_send)
 
     # -----------------------------
     # 保存
