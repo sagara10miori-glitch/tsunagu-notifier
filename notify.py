@@ -43,23 +43,35 @@ COLOR_EXIST = 0x2ECC71      # 緑
 COLOR_AUCTION = 0x9B59B6    # 紫
 COLOR_SPECIAL = 0xFFD700    # 金色
 
+# -----------------------------
+# 除外ユーザー
+# -----------------------------
+def load_exclude_users(path: str) -> set:
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return {line.strip() for line in f if line.strip() and not line.startswith("#")}
+    except FileNotFoundError:
+        return set()
+
+EXCLUDE_USERS = load_exclude_users("config/exclude_users.txt")
+
 
 # -----------------------------
 # ユーティリティ
 # -----------------------------
-def is_night():
+def is_night() -> bool:
     """深夜帯（2:00〜6:00未満）かどうか"""
     now = datetime.datetime.now().hour
     return 2 <= now < 6
 
 
-def is_morning_summary():
+def is_morning_summary() -> bool:
     """朝6:00のまとめ通知タイミングかどうか"""
     now = datetime.datetime.now()
     return now.hour == 6 and now.minute == 0
 
 
-def normalize_price(price_str):
+def normalize_price(price_str: str) -> str:
     """価格表記を「11,000円」形式に統一する"""
     if not price_str:
         return "0円"
@@ -68,14 +80,13 @@ def normalize_price(price_str):
     if digits == "":
         return "0円"
 
-    formatted = f"{int(digits):,}円"
-    return formatted
+    return f"{int(digits):,}円"
 
 
 # -----------------------------
 # HTML解析（つなぐ専用）
 # -----------------------------
-def parse_items(soup, mode):
+def parse_items(soup, mode: str):
     """
     つなぐの一覧ページから商品データを抽出する
     mode: "exist" or "auction"
@@ -106,10 +117,12 @@ def parse_items(soup, mode):
         # URL
         url_tag = c.select_one("a")
         url = url_tag["href"] if url_tag and url_tag.has_attr("href") else ""
-
-        # 相対URL対策
         if url.startswith("/"):
             url = "https://tsunagu.cloud" + url
+
+        # 出品者名
+        author_tag = c.select_one(".seller-name")
+        author = author_tag.text.strip() if author_tag else ""
 
         items.append({
             "title": title,
@@ -117,6 +130,7 @@ def parse_items(soup, mode):
             "buy_now": buy_now,
             "thumb": thumb,
             "url": url,
+            "author": author,
             "mode": mode,
         })
 
@@ -126,7 +140,7 @@ def parse_items(soup, mode):
 # -----------------------------
 # embed生成
 # -----------------------------
-def build_embed(item, is_special):
+def build_embed(item, is_special: bool):
     short_url = get_short_url(item["url"])
 
     color = COLOR_SPECIAL if is_special else (
@@ -143,16 +157,22 @@ def build_embed(item, is_special):
     # 画像 URL の検証
     image_url = validate_image_url(item["thumb"])
 
+    fields = [
+        {"name": "URL", "value": short_url, "inline": False},
+        {"name": "販売形式", "value": sale_type, "inline": True},
+        {"name": "価格", "value": item["price"], "inline": True},
+    ]
+    # 出品者名をフィールドに追加
+    if item.get("author"):
+        fields.append({"name": "出品者", "value": item["author"], "inline": True})
+
+    fields.extend(buy_now_field)
+
     embed = {
         "title": item["title"][:256],  # Discord title 制限
         "url": short_url,
         "color": color,
-        "fields": [
-            {"name": "URL", "value": short_url, "inline": False},
-            {"name": "販売形式", "value": sale_type, "inline": True},
-            {"name": "価格", "value": item["price"], "inline": True},
-            *buy_now_field,
-        ],
+        "fields": fields,
     }
 
     # 有効な画像のみ追加
@@ -236,8 +256,13 @@ def main():
         if h in last_all:
             continue
 
-        # カテゴリ分類をするならここで利用（今は除外判定だけ）
-        category = classify_item(item["title"], "", [])
+        # 除外ユーザー
+        if item.get("author") in EXCLUDE_USERS:
+            last_all[h] = True
+            continue
+
+        # タイトルベースの除外などをしたい場合
+        category = classify_item(item["title"], item.get("author", ""), [])
         if category == "除外":
             last_all[h] = True
             continue
