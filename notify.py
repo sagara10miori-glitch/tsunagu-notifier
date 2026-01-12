@@ -136,19 +136,19 @@ def main():
     # 朝6時 → 深夜帯まとめ通知
     # -----------------------------
     if is_morning_summary():
-        embeds = []
-
         pending_exist = load_json(DATA_PENDING_EXIST, default=[])
         pending_auction = load_json(DATA_PENDING_AUCTION, default=[])
-
-        for item in pending_exist + pending_auction:
-            embeds.append(build_embed(item, is_special=False))
-
-        if embeds:
-            send_discord(WEBHOOK_URL, content="🌅 深夜帯まとめ通知", embeds=embeds)
-
+    
+        all_pending = pending_exist + pending_auction
+    
+        # 10件ずつ送信
+        for i in range(0, len(all_pending), 10):
+            chunk = all_pending[i:i+10]
+            send_discord(WEBHOOK_URL, content="🌅 深夜帯まとめ通知", embeds=chunk)
+    
         clear_json(DATA_PENDING_EXIST)
         clear_json(DATA_PENDING_AUCTION)
+
 
     # -----------------------------
     # HTML取得
@@ -209,7 +209,9 @@ def main():
     # 通知送信
     # -----------------------------
     if embeds_to_send:
-        send_discord(WEBHOOK_URL, content="🔔 つなぐ　新着通知", embeds=embeds_to_send)
+        for i in range(0, len(embeds_to_send), 10):
+            chunk = embeds_to_send[i:i+10]
+            send_discord(WEBHOOK_URL, content="🔔 新着通知", embeds=chunk)
 
     # -----------------------------
     # 保存
