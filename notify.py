@@ -60,26 +60,20 @@ EXCLUDE_USERS = load_exclude_users("config/exclude_users.txt")
 # ユーティリティ
 # -----------------------------
 def is_night() -> bool:
-    """深夜帯（2:00〜6:00未満）かどうか"""
-    now = datetime.datetime.now().hour
-    return 2 <= now < 6
+    return 2 <= datetime.datetime.now().hour < 6
 
 
 def is_morning_summary() -> bool:
-    """朝6:00のまとめ通知タイミングかどうか"""
     now = datetime.datetime.now()
     return now.hour == 6 and now.minute == 0
 
 
 def normalize_price(price_str: str) -> str:
-    """価格表記を「11,000円」形式に統一する"""
     if not price_str:
         return "0円"
-
     digits = "".join(c for c in price_str if c.isdigit())
     if digits == "":
         return "0円"
-
     return f"{int(digits):,}円"
 
 
@@ -87,40 +81,30 @@ def normalize_price(price_str: str) -> str:
 # HTML解析（つなぐ専用）
 # -----------------------------
 def parse_items(soup, mode: str):
-    """
-    つなぐの一覧ページから商品データを抽出する
-    mode: "exist" or "auction"
-    """
     items = []
 
     cards = soup.select(".p-product")
 
     for c in cards:
-        # タイトル
         title_tag = c.select_one(".title")
         title = title_tag.text.strip() if title_tag else ""
 
-        # 価格
         price_tag = c.select_one(".text-danger") or c.select_one(".h3")
         raw_price = price_tag.text.strip() if price_tag else ""
         price = normalize_price(raw_price)
 
-        # 即決価格（オークションのみ）
         buy_now_tag = c.select_one(".small .h2:not(.text-danger)")
         raw_buy_now = buy_now_tag.text.strip() if buy_now_tag else None
         buy_now = normalize_price(raw_buy_now) if raw_buy_now else None
 
-        # サムネイル
         thumb_tag = c.select_one(".image-1-1 img")
         thumb = thumb_tag["src"] if thumb_tag and thumb_tag.has_attr("src") else ""
 
-        # URL
         url_tag = c.select_one("a")
         url = url_tag["href"] if url_tag and url_tag.has_attr("href") else ""
         if url.startswith("/"):
             url = "https://tsunagu.cloud" + url
 
-        # 出品者名
         author_tag = c.select_one(".seller-name")
         author = author_tag.text.strip() if author_tag else ""
 
@@ -149,33 +133,27 @@ def build_embed(item, is_special: bool):
 
     sale_type = "既存販売" if item["mode"] == "exist" else "オークション"
 
-    buy_now = item.get("buy_now")
-    buy_now_field = []
-    if buy_now:
-        buy_now_field = [{"name": "即決価格", "value": buy_now, "inline": True}]
-
-    # 画像 URL の検証
-    image_url = validate_image_url(item["thumb"])
-
     fields = [
         {"name": "URL", "value": short_url, "inline": False},
         {"name": "販売形式", "value": sale_type, "inline": True},
         {"name": "価格", "value": item["price"], "inline": True},
     ]
-    # 出品者名をフィールドに追加
+
     if item.get("author"):
         fields.append({"name": "出品者", "value": item["author"], "inline": True})
 
-    fields.extend(buy_now_field)
+    if item.get("buy_now"):
+        fields.append({"name": "即決価格", "value": item["buy_now"], "inline": True})
+
+    image_url = validate_image_url(item["thumb"])
 
     embed = {
-        "title": item["title"][:256],  # Discord title 制限
+        "title": item["title"][:256],
         "url": short_url,
         "color": color,
         "fields": fields,
     }
 
-    # 有効な画像のみ追加
     if image_url:
         embed["image"] = {"url": image_url}
 
@@ -190,23 +168,16 @@ def main():
     last_special = load_json(DATA_LAST_SPECIAL, default={})
 
     # -----------------------------
-    # 朝6時 → 深夜帯まとめ通知
+    # 朝6時 → 深夜帯まとめ通知（最大10件）
     # -----------------------------
     if is_morning_summary():
         pending_exist = load_json(DATA_PENDING_EXIST, default=[])
         pending_auction = load_json(DATA_PENDING_AUCTION, default=[])
 
-        all_pending = pending_exist + pending_auction
+        all_pending = (pending_exist + pending_auction)[:10]
 
-        # 10件ずつ送信
-        for i in range(0, len(all_pending), 10):
-            chunk = all_pending[i:i + 10]
-            if chunk:
-                send_discord(
-                    WEBHOOK_URL,
-                    content="🌅 深夜帯まとめ通知",
-                    embeds=chunk,
-                )
+        if all_pending:
+            send_discord(WEBHOOK_URL, content="🌅 深夜帯まとめ通知", embeds=all_pending)
 
         clear_json(DATA_PENDING_EXIST)
         clear_json(DATA_PENDING_AUCTION)
@@ -217,19 +188,10 @@ def main():
     html_exist = fetch_html(URL_EXIST)
     html_auction = fetch_html(URL_AUCTION)
 
-    # debug 保存
     with open("debug_exist.html", "w", encoding="utf-8") as f:
         f.write(html_exist)
-
     with open("debug_auction.html", "w", encoding="utf-8") as f:
         f.write(html_auction)
-
-    # HTML が正しく取得できているか簡易チェック
-    if "p-product" not in html_exist:
-        print("[WARN] 商品が取得できていません（exist）")
-
-    if "p-product" not in html_auction:
-        print("[WARN] 商品が取得できていません（auction）")
 
     soup_exist = parse_html(html_exist)
     soup_auction = parse_html(html_auction)
@@ -244,64 +206,49 @@ def main():
     new_items = items_exist + items_auction
 
     # -----------------------------
-    # 新着チェック
+    # 新着チェック（通知は最大10件）
     # -----------------------------
     embeds_to_send = []
 
-for item in new_items:
-    # URL のみでハッシュ生成（揺れ防止）
-    h = generate_item_hash(item["url"])
+    for item in new_items:
+        h = generate_item_hash(item["url"])
 
-    # 既に通知済み
-    if h in last_all:
-        continue
+        if h in last_all:
+            continue
 
-    # 除外ユーザー
-    if item.get("author") in EXCLUDE_USERS:
+        if item.get("author") in EXCLUDE_USERS:
+            last_all[h] = True
+            continue
+
+        price_num = int(item["price"].replace("円", "").replace(",", ""))
+        if price_num >= 15000:
+            last_all[h] = True
+            continue
+
+        category = classify_item(item["title"], item.get("author", ""), [])
+        if category == "除外":
+            last_all[h] = True
+            continue
+
+        if is_night():
+            pending_path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
+            pending = load_json(pending_path, default=[])
+            if len(pending) < 10:
+                append_json_list(pending_path, item)
+            last_all[h] = True
+            continue
+
+        if len(embeds_to_send) < 10:
+            embeds_to_send.append(build_embed(item, is_special=False))
+
         last_all[h] = True
-        continue
-
-    # ★ 価格フィルター：15,000円以上は通知しない
-    price_num = int(item["price"].replace("円", "").replace(",", ""))
-    if price_num >= 15000:
-        last_all[h] = True
-        continue
-
-    # タイトルベースの除外など
-    category = classify_item(item["title"], item.get("author", ""), [])
-    if category == "除外":
-        last_all[h] = True
-        continue
-
-    # 深夜帯 → pending に保存
-    if is_night():
-        if item["mode"] == "exist":
-            append_json_list(DATA_PENDING_EXIST, item)
-        else:
-            append_json_list(DATA_PENDING_AUCTION, item)
-        last_all[h] = True
-        continue
-
-    # 即時通知
-    embeds_to_send.append(build_embed(item, is_special=False))
-    last_all[h] = True
 
     # -----------------------------
-    # 通知送信（10件ずつ）
+    # 通知送信（最大10件）
     # -----------------------------
     if embeds_to_send:
-        for i in range(0, len(embeds_to_send), 10):
-            chunk = embeds_to_send[i:i + 10]
-            if chunk:
-                send_discord(
-                    WEBHOOK_URL,
-                    content="🔔 新着通知",
-                    embeds=chunk,
-                )
+        send_discord(WEBHOOK_URL, content="🔔 新着通知", embeds=embeds_to_send)
 
-    # -----------------------------
-    # 保存
-    # -----------------------------
     save_json(DATA_LAST_ALL, last_all)
     save_json(DATA_LAST_SPECIAL, last_special)
 
