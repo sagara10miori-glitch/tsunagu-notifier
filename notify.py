@@ -1,5 +1,6 @@
 import os
 import datetime
+
 from utils.safety import safe_run
 from utils.fetch import fetch_html, parse_html, validate_image_url
 from utils.classify import classify_item
@@ -13,8 +14,22 @@ from utils.discord import send_discord
 # -----------------------------
 WEBHOOK_URL = os.getenv("DISCORD_WEBHOOK_URL")
 
-URL_EXIST = "https://tsunagu.cloud/exist_products?sort=&exist_product_category_id=2&exist_product_category2_id=2&exist_product_category3_id=&keyword=&max_sales_count_exist_items=1&is_selling=true&is_ai_content=0"
-URL_AUCTION = "https://tsunagu.cloud/auctions?sort=&exist_product_category_id=2&exist_product_category2_id=2&exist_product_category3_id=&keyword=&is_disp_progress=1&is_ai_content=0"
+URL_EXIST = (
+    "https://tsunagu.cloud/exist_products"
+    "?sort=&exist_product_category_id=2"
+    "&exist_product_category2_id=2"
+    "&exist_product_category3_id="
+    "&keyword=&max_sales_count_exist_items=1"
+    "&is_selling=true&is_ai_content=0"
+)
+
+URL_AUCTION = (
+    "https://tsunagu.cloud/auctions"
+    "?sort=&exist_product_category_id=2"
+    "&exist_product_category2_id=2"
+    "&exist_product_category3_id="
+    "&keyword=&is_disp_progress=1&is_ai_content=0"
+)
 
 DATA_LAST_ALL = "data/last_all.json"
 DATA_LAST_SPECIAL = "data/last_special.json"
@@ -33,19 +48,38 @@ COLOR_SPECIAL = 0xFFD700    # 金色
 # ユーティリティ
 # -----------------------------
 def is_night():
+    """深夜帯（2:00〜6:00未満）かどうか"""
     now = datetime.datetime.now().hour
     return 2 <= now < 6
 
 
 def is_morning_summary():
+    """朝6:00のまとめ通知タイミングかどうか"""
     now = datetime.datetime.now()
     return now.hour == 6 and now.minute == 0
+
+
+def normalize_price(price_str):
+    """価格表記を「11,000円」形式に統一する"""
+    if not price_str:
+        return "0円"
+
+    digits = "".join(c for c in price_str if c.isdigit())
+    if digits == "":
+        return "0円"
+
+    formatted = f"{int(digits):,}円"
+    return formatted
 
 
 # -----------------------------
 # HTML解析（つなぐ専用）
 # -----------------------------
 def parse_items(soup, mode):
+    """
+    つなぐの一覧ページから商品データを抽出する
+    mode: "exist" or "auction"
+    """
     items = []
 
     cards = soup.select(".p-product")
@@ -57,19 +91,21 @@ def parse_items(soup, mode):
 
         # 価格
         price_tag = c.select_one(".text-danger") or c.select_one(".h3")
-        price = price_tag.text.strip() if price_tag else ""
+        raw_price = price_tag.text.strip() if price_tag else ""
+        price = normalize_price(raw_price)
 
         # 即決価格（オークションのみ）
         buy_now_tag = c.select_one(".small .h2:not(.text-danger)")
-        buy_now = buy_now_tag.text.strip() if buy_now_tag else None
+        raw_buy_now = buy_now_tag.text.strip() if buy_now_tag else None
+        buy_now = normalize_price(raw_buy_now) if raw_buy_now else None
 
         # サムネイル
         thumb_tag = c.select_one(".image-1-1 img")
-        thumb = thumb_tag["src"] if thumb_tag else ""
+        thumb = thumb_tag["src"] if thumb_tag and thumb_tag.has_attr("src") else ""
 
         # URL
         url_tag = c.select_one("a")
-        url = url_tag["href"] if url_tag else ""
+        url = url_tag["href"] if url_tag and url_tag.has_attr("href") else ""
 
         # 相対URL対策
         if url.startswith("/"):
@@ -81,7 +117,7 @@ def parse_items(soup, mode):
             "buy_now": buy_now,
             "thumb": thumb,
             "url": url,
-            "mode": mode
+            "mode": mode,
         })
 
     return items
@@ -104,22 +140,22 @@ def build_embed(item, is_special):
     if buy_now:
         buy_now_field = [{"name": "即決価格", "value": buy_now, "inline": True}]
 
-    # ★ 画像 URL の検証
+    # 画像 URL の検証
     image_url = validate_image_url(item["thumb"])
 
     embed = {
-        "title": item["title"][:256],  # Discord 制限対策
+        "title": item["title"][:256],  # Discord title 制限
         "url": short_url,
         "color": color,
         "fields": [
             {"name": "URL", "value": short_url, "inline": False},
             {"name": "販売形式", "value": sale_type, "inline": True},
             {"name": "価格", "value": item["price"], "inline": True},
-            *buy_now_field
-        ]
+            *buy_now_field,
+        ],
     }
 
-    # ★ 有効な画像のみ追加
+    # 有効な画像のみ追加
     if image_url:
         embed["image"] = {"url": image_url}
 
@@ -144,8 +180,13 @@ def main():
 
         # 10件ずつ送信
         for i in range(0, len(all_pending), 10):
-            chunk = all_pending[i:i+10]
-            send_discord(WEBHOOK_URL, content="🌅 深夜帯まとめ通知", embeds=chunk)
+            chunk = all_pending[i:i + 10]
+            if chunk:
+                send_discord(
+                    WEBHOOK_URL,
+                    content="🌅 深夜帯まとめ通知",
+                    embeds=chunk,
+                )
 
         clear_json(DATA_PENDING_EXIST)
         clear_json(DATA_PENDING_AUCTION)
@@ -163,7 +204,7 @@ def main():
     with open("debug_auction.html", "w", encoding="utf-8") as f:
         f.write(html_auction)
 
-    # HTML が正しく取得できているかチェック
+    # HTML が正しく取得できているか簡易チェック
     if "p-product" not in html_exist:
         print("[WARN] 商品が取得できていません（exist）")
 
@@ -188,11 +229,17 @@ def main():
     embeds_to_send = []
 
     for item in new_items:
-        # ★ URL のみでハッシュ生成（揺れ防止）
+        # URL のみでハッシュ生成（揺れ防止）
         h = generate_item_hash(item["url"])
 
         # 既に通知済み
         if h in last_all:
+            continue
+
+        # カテゴリ分類をするならここで利用（今は除外判定だけ）
+        category = classify_item(item["title"], "", [])
+        if category == "除外":
+            last_all[h] = True
             continue
 
         # 深夜帯 → pending に保存
@@ -213,8 +260,13 @@ def main():
     # -----------------------------
     if embeds_to_send:
         for i in range(0, len(embeds_to_send), 10):
-            chunk = embeds_to_send[i:i+10]
-            send_discord(WEBHOOK_URL, content="🔔 新着通知", embeds=chunk)
+            chunk = embeds_to_send[i:i + 10]
+            if chunk:
+                send_discord(
+                    WEBHOOK_URL,
+                    content="🔔 新着通知",
+                    embeds=chunk,
+                )
 
     # -----------------------------
     # 保存
