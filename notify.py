@@ -32,13 +32,6 @@ COLOR_SPECIAL = 0xFFD700    # 金色
 # -----------------------------
 # ユーティリティ
 # -----------------------------
-def load_list(path):
-    if not os.path.exists(path):
-        return []
-    with open(path, "r", encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
-
-
 def is_night():
     now = datetime.datetime.now().hour
     return 2 <= now < 6
@@ -62,7 +55,7 @@ def parse_items(soup, mode):
         title_tag = c.select_one(".title")
         title = title_tag.text.strip() if title_tag else ""
 
-        # 価格（既存販売 or オークション）
+        # 価格
         price_tag = c.select_one(".text-danger") or c.select_one(".h3")
         price = price_tag.text.strip() if price_tag else ""
 
@@ -115,7 +108,7 @@ def build_embed(item, is_special):
     image_url = validate_image_url(item["thumb"])
 
     embed = {
-        "title": item["title"],
+        "title": item["title"][:256],  # Discord 制限対策
         "url": short_url,
         "color": color,
         "fields": [
@@ -126,7 +119,7 @@ def build_embed(item, is_special):
         ]
     }
 
-    # ★ 画像が有効な場合のみ追加
+    # ★ 有効な画像のみ追加
     if image_url:
         embed["image"] = {"url": image_url}
 
@@ -146,17 +139,16 @@ def main():
     if is_morning_summary():
         pending_exist = load_json(DATA_PENDING_EXIST, default=[])
         pending_auction = load_json(DATA_PENDING_AUCTION, default=[])
-    
+
         all_pending = pending_exist + pending_auction
-    
+
         # 10件ずつ送信
         for i in range(0, len(all_pending), 10):
             chunk = all_pending[i:i+10]
             send_discord(WEBHOOK_URL, content="🌅 深夜帯まとめ通知", embeds=chunk)
-    
+
         clear_json(DATA_PENDING_EXIST)
         clear_json(DATA_PENDING_AUCTION)
-
 
     # -----------------------------
     # HTML取得
@@ -164,12 +156,19 @@ def main():
     html_exist = fetch_html(URL_EXIST)
     html_auction = fetch_html(URL_AUCTION)
 
-    # ★★★ debug HTML 保存 ★★★
+    # debug 保存
     with open("debug_exist.html", "w", encoding="utf-8") as f:
         f.write(html_exist)
 
     with open("debug_auction.html", "w", encoding="utf-8") as f:
         f.write(html_auction)
+
+    # HTML が正しく取得できているかチェック
+    if "p-product" not in html_exist:
+        print("[WARN] 商品が取得できていません（exist）")
+
+    if "p-product" not in html_auction:
+        print("[WARN] 商品が取得できていません（auction）")
 
     soup_exist = parse_html(html_exist)
     soup_auction = parse_html(html_auction)
@@ -189,15 +188,11 @@ def main():
     embeds_to_send = []
 
     for item in new_items:
-        h = generate_item_hash(item["title"], "", item["url"])
+        # ★ URL のみでハッシュ生成（揺れ防止）
+        h = generate_item_hash(item["url"])
 
         # 既に通知済み
         if h in last_all:
-            continue
-
-        # カテゴリ分類
-        category = classify_item(item["title"], "", [])
-        if category == "除外":
             continue
 
         # 深夜帯 → pending に保存
@@ -214,7 +209,7 @@ def main():
         last_all[h] = True
 
     # -----------------------------
-    # 通知送信
+    # 通知送信（10件ずつ）
     # -----------------------------
     if embeds_to_send:
         for i in range(0, len(embeds_to_send), 10):
