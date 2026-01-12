@@ -1,7 +1,7 @@
 import os
 import datetime
 from utils.safety import safe_run
-from utils.fetch import fetch_html, parse_html
+from utils.fetch import fetch_html, parse_html, validate_image_url
 from utils.classify import classify_item
 from utils.hashgen import generate_item_hash
 from utils.shorturl import get_short_url
@@ -111,7 +111,10 @@ def build_embed(item, is_special):
     if buy_now:
         buy_now_field = [{"name": "即決価格", "value": buy_now, "inline": True}]
 
-    return {
+    # ★ 画像 URL の検証
+    image_url = validate_image_url(item["thumb"])
+
+    embed = {
         "title": item["title"],
         "url": short_url,
         "color": color,
@@ -120,9 +123,14 @@ def build_embed(item, is_special):
             {"name": "販売形式", "value": sale_type, "inline": True},
             {"name": "価格", "value": item["price"], "inline": True},
             *buy_now_field
-        ],
-        "image": {"url": item["thumb"]}
+        ]
     }
+
+    # ★ 画像が有効な場合のみ追加
+    if image_url:
+        embed["image"] = {"url": image_url}
+
+    return embed
 
 
 # -----------------------------
