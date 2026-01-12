@@ -14,3 +14,22 @@ def parse_html(html):
         return BeautifulSoup(html, "lxml")
     except Exception:
         return None
+
+def validate_image_url(url):
+    # 空文字は NG
+    if not url or url.strip() == "":
+        return None
+
+    # 相対URLなら絶対URLに変換
+    if url.startswith("/"):
+        url = "https://tsunagu.cloud" + url
+
+    # HEAD リクエストで存在確認
+    try:
+        r = requests.head(url, timeout=5)
+        if r.status_code == 200:
+            return url
+    except:
+        pass
+
+    return None
