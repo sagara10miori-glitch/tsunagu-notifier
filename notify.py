@@ -32,16 +32,15 @@ URL_AUCTION = (
 )
 
 DATA_LAST_ALL = "data/last_all.json"
-DATA_LAST_SPECIAL = "data/last_special.json"
 DATA_PENDING_EXIST = "data/pending_night_exist.json"
 DATA_PENDING_AUCTION = "data/pending_night_auction.json"
 
 # -----------------------------
 # 色設定
 # -----------------------------
-COLOR_EXIST = 0x2ECC71      # 緑
-COLOR_AUCTION = 0x9B59B6    # 紫
-COLOR_SPECIAL = 0xFFD700    # 金色
+COLOR_EXIST = 0x2ECC71
+COLOR_AUCTION = 0x9B59B6
+COLOR_SPECIAL = 0xFFD700
 
 # -----------------------------
 # 除外ユーザー
@@ -78,7 +77,7 @@ def normalize_price(price_str: str) -> str:
 
 
 # -----------------------------
-# HTML解析（つなぐ専用）
+# HTML解析
 # -----------------------------
 def parse_items(soup, mode: str):
     items = []
@@ -131,16 +130,12 @@ def build_embed(item, is_special: bool):
         COLOR_EXIST if item["mode"] == "exist" else COLOR_AUCTION
     )
 
-    sale_type = "既存販売" if item["mode"] == "exist" else "オークション"
-
     fields = [
         {"name": "URL", "value": short_url, "inline": False},
-        {"name": "販売形式", "value": sale_type, "inline": True},
+        {"name": "販売形式", "value": "既存販売" if item["mode"] == "exist" else "オークション", "inline": True},
         {"name": "価格", "value": item["price"], "inline": True},
+        {"name": "出品者", "value": item["author"], "inline": True},
     ]
-
-    if item.get("author"):
-        fields.append({"name": "出品者", "value": item["author"], "inline": True})
 
     if item.get("buy_now"):
         fields.append({"name": "即決価格", "value": item["buy_now"], "inline": True})
@@ -165,10 +160,9 @@ def build_embed(item, is_special: bool):
 # -----------------------------
 def main():
     last_all = load_json(DATA_LAST_ALL, default={})
-    last_special = load_json(DATA_LAST_SPECIAL, default={})
 
     # -----------------------------
-    # 朝6時 → 深夜帯まとめ通知（最大10件）
+    # 朝6時まとめ通知（最大10件）
     # -----------------------------
     if is_morning_summary():
         pending_exist = load_json(DATA_PENDING_EXIST, default=[])
@@ -193,6 +187,11 @@ def main():
     with open("debug_auction.html", "w", encoding="utf-8") as f:
         f.write(html_auction)
 
+    # HTML取得失敗 → 今回はスキップ（重複防止）
+    if "p-product" not in html_exist and "p-product" not in html_auction:
+        print("[ERROR] 商品が取得できませんでした。今回の実行はスキップします。")
+        return
+
     soup_exist = parse_html(html_exist)
     soup_auction = parse_html(html_auction)
 
@@ -206,7 +205,7 @@ def main():
     new_items = items_exist + items_auction
 
     # -----------------------------
-    # 新着チェック（通知は最大10件）
+    # 新着チェック（最大10件）
     # -----------------------------
     embeds_to_send = []
 
@@ -216,17 +215,12 @@ def main():
         if h in last_all:
             continue
 
-        if item.get("author") in EXCLUDE_USERS:
+        if item["author"] in EXCLUDE_USERS:
             last_all[h] = True
             continue
 
         price_num = int(item["price"].replace("円", "").replace(",", ""))
         if price_num >= 15000:
-            last_all[h] = True
-            continue
-
-        category = classify_item(item["title"], item.get("author", ""), [])
-        if category == "除外":
             last_all[h] = True
             continue
 
@@ -250,7 +244,6 @@ def main():
         send_discord(WEBHOOK_URL, content="🔔 新着通知", embeds=embeds_to_send)
 
     save_json(DATA_LAST_ALL, last_all)
-    save_json(DATA_LAST_SPECIAL, last_special)
 
 
 # -----------------------------
