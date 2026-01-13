@@ -1,5 +1,6 @@
 import os
 import datetime
+import re
 
 from utils.safety import safe_run
 from utils.fetch import fetch_html, parse_html, validate_image_url
@@ -43,7 +44,7 @@ COLOR_AUCTION = 0x9B59B6
 COLOR_SPECIAL = 0xFFD700
 
 # -----------------------------
-# 除外ユーザー
+# 除外ユーザー（ID）
 # -----------------------------
 def load_exclude_users(path: str) -> set:
     try:
@@ -77,7 +78,32 @@ def normalize_price(price_str: str) -> str:
 
 
 # -----------------------------
-# HTML解析
+# 詳細ページからユーザーIDを取得
+# -----------------------------
+def fetch_seller_id_from_detail(url):
+    """商品詳細ページにアクセスしてユーザーIDを取得する"""
+    html = fetch_html(url)
+    soup = parse_html(html)
+    if not soup:
+        return ""
+
+    # 出品者プロフィールリンクを探す
+    tag = soup.select_one('a[href*="/users/"]')
+    if not tag:
+        return ""
+
+    href = tag.get("href", "")
+
+    # /users/xxxxxx の部分からIDを抽出
+    m = re.search(r"/users/([^/?#]+)", href)
+    if m:
+        return m.group(1).strip()
+
+    return ""
+
+
+# -----------------------------
+# HTML解析（一覧ページ）
 # -----------------------------
 def parse_items(soup, mode: str):
     items = []
@@ -104,16 +130,12 @@ def parse_items(soup, mode: str):
         if url.startswith("/"):
             url = "https://tsunagu.cloud" + url
 
-        author_tag = c.select_one(".seller-name")
-        author = author_tag.text.strip() if author_tag else ""
-
         items.append({
             "title": title,
             "price": price,
             "buy_now": buy_now,
             "thumb": thumb,
             "url": url,
-            "author": author,
             "mode": mode,
         })
 
@@ -134,7 +156,7 @@ def build_embed(item, is_special: bool):
         {"name": "URL", "value": short_url, "inline": False},
         {"name": "販売形式", "value": "既存販売" if item["mode"] == "exist" else "オークション", "inline": True},
         {"name": "価格", "value": item["price"], "inline": True},
-        {"name": "出品者", "value": item["author"], "inline": True},
+        {"name": "出品者ID", "value": item["seller_id"], "inline": True},
     ]
 
     if item.get("buy_now"):
@@ -187,7 +209,6 @@ def main():
     with open("debug_auction.html", "w", encoding="utf-8") as f:
         f.write(html_auction)
 
-    # HTML取得失敗 → 今回はスキップ（重複防止）
     if "p-product" not in html_exist and "p-product" not in html_auction:
         print("[ERROR] 商品が取得できませんでした。今回の実行はスキップします。")
         return
@@ -215,15 +236,22 @@ def main():
         if h in last_all:
             continue
 
-        if item["author"] in EXCLUDE_USERS:
+        # ★ 詳細ページからユーザーIDを取得
+        seller_id = fetch_seller_id_from_detail(item["url"])
+        item["seller_id"] = seller_id
+
+        # ★ 除外ユーザー判定（IDベース）
+        if seller_id in EXCLUDE_USERS:
             last_all[h] = True
             continue
 
+        # 価格フィルター
         price_num = int(item["price"].replace("円", "").replace(",", ""))
         if price_num >= 15000:
             last_all[h] = True
             continue
 
+        # 深夜帯 → pending
         if is_night():
             pending_path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
             pending = load_json(pending_path, default=[])
@@ -232,6 +260,7 @@ def main():
             last_all[h] = True
             continue
 
+        # 通知は最大10件
         if len(embeds_to_send) < 10:
             embeds_to_send.append(build_embed(item, is_special=False))
 
