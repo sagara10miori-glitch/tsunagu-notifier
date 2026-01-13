@@ -158,7 +158,6 @@ def build_embed(item):
         {"name": "URL", "value": short_url, "inline": False},
         {"name": "販売形式", "value": "既存販売" if item["mode"] == "exist" else "オークション", "inline": True},
         {"name": "価格", "value": item["price"], "inline": True},
-        {"name": "出品者ID", "value": item["seller_id"], "inline": True},
     ]
 
     if item.get("buy_now"):
