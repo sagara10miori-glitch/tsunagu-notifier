@@ -1,5 +1,6 @@
-import json
+import tempfile
 import os
+import json
 
 def load_json(path, default):
     if not os.path.exists(path):
@@ -12,8 +13,10 @@ def load_json(path, default):
 
 def save_json(path, data):
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, path)
 
 def append_json_list(path, item):
     data = load_json(path, [])
