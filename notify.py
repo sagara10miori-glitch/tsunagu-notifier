@@ -94,7 +94,7 @@ def normalize_price(price_str: str) -> str:
     return f"{int(digits):,}円"
 
 # -----------------------------
-# 詳細ページからユーザーID取得（キャッシュ対応）
+# 詳細ページからユーザーID取得（完全対応版）
 # -----------------------------
 def fetch_seller_id_from_detail(url):
     if url in seller_cache:
@@ -106,17 +106,18 @@ def fetch_seller_id_from_detail(url):
         seller_cache[url] = ""
         return ""
 
-    tag = soup.find("a", href=re.compile("/users/"))
-    if not tag:
-        seller_cache[url] = ""
-        return ""
+    # すべての a タグから /users/ を含む href を探す（絶対URLにも対応）
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "/users/" in href:
+            m = re.search(r"/users/([^/?#]+)", href)
+            if m:
+                seller_id = m.group(1).strip()
+                seller_cache[url] = seller_id
+                return seller_id
 
-    href = tag.get("href", "")
-    m = re.search(r"/users/([^/?#]+)", href)
-    seller_id = m.group(1).strip() if m else ""
-
-    seller_cache[url] = seller_id
-    return seller_id
+    seller_cache[url] = ""
+    return ""
 
 # -----------------------------
 # 価格帯別：通知文言
@@ -215,9 +216,9 @@ def build_embed(item):
 def main():
     last_all = load_json(DATA_LAST_ALL, default={})
 
-    # last_all の肥大化対策
-    if len(last_all) > 50000:
-        last_all = dict(list(last_all.items())[-30000:])
+    # last_all の肥大化対策（100件に制限）
+    if len(last_all) > 100:
+        last_all = dict(list(last_all.items())[-100:])
 
     # 朝6時まとめ通知
     if is_morning_summary():
@@ -231,7 +232,7 @@ def main():
         clear_json(DATA_PENDING_EXIST)
         clear_json(DATA_PENDING_AUCTION)
 
-    # HTML取得
+    # HTML取得（1ページのみ）
     html_exist = fetch_html(URL_EXIST)
     html_auction = fetch_html(URL_AUCTION)
 
@@ -252,7 +253,10 @@ def main():
     embeds_to_send = []
 
     for item in new_items:
-        h = generate_item_hash(item["url"])
+        # ★ URL 正規化（重複ゼロ）
+        clean_url = item["url"].split("?")[0]
+        h = generate_item_hash(clean_url)
+
         if h in last_all:
             continue
 
@@ -262,7 +266,7 @@ def main():
             last_all[h] = True
             continue
 
-        # seller_id（キャッシュ対応）
+        # seller_id（完全対応版）
         seller_id = fetch_seller_id_from_detail(item["url"])
         item["seller_id"] = seller_id
 
