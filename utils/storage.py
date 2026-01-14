@@ -11,10 +11,12 @@ def load_json(path: str, default: Any):
     except Exception:
         return default
 
+
 def save_json(path: str, data: Any):
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+
 
 def append_json_list(path: str, item: Any):
     data = load_json(path, default=[])
@@ -22,6 +24,7 @@ def append_json_list(path: str, item: Any):
         data = []
     data.append(item)
     save_json(path, data)
+
 
 def clear_json(path: str):
     if os.path.exists(path):
