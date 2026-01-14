@@ -183,7 +183,7 @@ def parse_items(soup, mode: str):
                 if digits:
                     price_tag = tag
                     break
-
+        
         raw_price = price_tag.text.strip() if price_tag else ""
         price = normalize_price(raw_price)
 
