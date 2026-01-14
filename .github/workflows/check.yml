@@ -1,9 +1,5 @@
 name: Check Tsunagu
 
-concurrency:
-  group: tsunagu-notifier
-  cancel-in-progress: true
-
 on:
   schedule:
     - cron: "*/5 * * * *"   # 24時間5分ごと
