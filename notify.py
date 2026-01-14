@@ -240,7 +240,7 @@ def main():
             last_all[h] = True
             continue
 
-        # 深夜帯 → pending
+        # ★ 深夜帯 → pending（embed_to_send に入れる前に判定）
         if is_night():
             pending_path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
             pending = load_json(pending_path, default=[])
@@ -249,7 +249,7 @@ def main():
             last_all[h] = True
             continue
 
-        # 通知は最大10件
+        # 深夜帯でない場合のみ通知対象に入れる
         if len(embeds_to_send) < 10:
             embeds_to_send.append(build_embed(item))
 
