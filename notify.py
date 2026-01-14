@@ -116,6 +116,16 @@ def fetch_seller_id_from_detail(url):
                 seller_cache[url] = seller_id
                 return seller_id
 
+    # フォールバック：/profile/ パターンにも対応
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        if "/profile/" in href:
+            m = re.search(r"/profile/([^/?#]+)", href)
+            if m:
+                seller_id = m.group(1).strip()
+                seller_cache[url] = seller_id
+                return seller_id
+
     seller_cache[url] = ""
     return ""
 
