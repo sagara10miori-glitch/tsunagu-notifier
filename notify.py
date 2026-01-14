@@ -11,19 +11,21 @@ from utils.storage import load_json, save_json, append_json_list, clear_json
 from utils.discord import send_discord
 
 # -----------------------------
-# fetch_html を timeout 対応に差し替え
+# 高速化版 fetch_html（timeout + retry + UA）
 # -----------------------------
 def fetch_html(url):
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
-        }
-        res = requests.get(url, headers=headers, timeout=10)
-        res.raise_for_status()
-        return res.text
-    except Exception as e:
-        print("[ERROR] fetch_html failed:", e)
-        return ""
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "Accept-Language": "ja,en-US;q=0.9,en;q=0.8",
+    }
+    for _ in range(2):  # retry 1回
+        try:
+            res = requests.get(url, headers=headers, timeout=5)
+            res.raise_for_status()
+            return res.text
+        except Exception:
+            continue
+    return ""
 
 # -----------------------------
 # 設定
@@ -215,7 +217,6 @@ def main():
     html_auction = fetch_html(URL_AUCTION)
 
     if "p-product" not in html_exist and "p-product" not in html_auction:
-        print("[ERROR] 商品が取得できませんでした。スキップします。")
         return
 
     soup_exist = parse_html(html_exist)
@@ -236,27 +237,23 @@ def main():
         if h in last_all:
             continue
 
-        # 出品者ID取得
         seller_id = fetch_seller_id_from_detail(item["url"])
         item["seller_id"] = seller_id
 
-        # 取得失敗 → 二度と通知しない
         if not seller_id:
             last_all[h] = True
             continue
 
-        # 除外ユーザー
         if seller_id in EXCLUDE_USERS:
             last_all[h] = True
             continue
 
-        # 価格フィルター
         price_num = int(item["price"].replace("円", "").replace(",", ""))
         if price_num >= 15000:
             last_all[h] = True
             continue
 
-        # ★ 深夜帯 → pending（embed_to_send に入れる前に判定）
+        # ★ 深夜帯 → pending（高速化版）
         if is_night():
             pending_path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
             pending = load_json(pending_path, default=[])
@@ -265,7 +262,7 @@ def main():
             last_all[h] = True
             continue
 
-        # 深夜帯でない場合のみ通知対象に入れる
+        # 通知対象
         if len(embeds_to_send) < 10:
             embeds_to_send.append(build_embed(item))
 
@@ -278,8 +275,8 @@ def main():
 
         try:
             send_discord(WEBHOOK_URL, content=title, embeds=embeds_to_send)
-        except Exception as e:
-            print("[ERROR] Discord送信失敗:", e)
+        except Exception:
+            pass
         finally:
             save_json(DATA_LAST_ALL, last_all)
             return
