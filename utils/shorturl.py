@@ -13,8 +13,8 @@ def get_short_url(url):
 
     short = f"{url}#s={_h(url)}"
     cache[url] = short
-
-    if len(cache) > 1000:
+    
+    if len(cache) > 500:
         cache = dict(list(cache.items())[-500:])
 
     save_json(DATA_SHORT, cache)
