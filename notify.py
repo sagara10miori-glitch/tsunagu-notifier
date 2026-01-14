@@ -175,6 +175,14 @@ def parse_items(soup, mode: str):
 
         # 価格は text-danger のみを信頼（残り時間などの誤検出防止）
         price_tag = c.find("p", class_=lambda x: x and "text-danger" in x)
+        
+        # fallback: text-danger が無い場合は数字だけのタグを探す
+        if not price_tag:
+            for tag in c.find_all(["p", "h2", "h3"]):
+                digits = "".join(ch for ch in tag.text if ch.isdigit())
+                if digits:
+                    price_tag = tag
+                    break
 
         raw_price = price_tag.text.strip() if price_tag else ""
         price = normalize_price(raw_price)
@@ -182,7 +190,9 @@ def parse_items(soup, mode: str):
         # 即決価格は h2 のうち「数字のみ」を含むものだけ採用
         buy_now = None
         buy_now_tag = c.find("h2")
-        if buy_now_tag:
+        
+        # 「即決」という文字がある場合のみ buy_now として扱う
+        if buy_now_tag and ("即決" in buy_now_tag.text or "即決価格" in buy_now_tag.text):
             digits = "".join(ch for ch in buy_now_tag.text if ch.isdigit())
             if digits:
                 buy_now = normalize_price(buy_now_tag.text)
