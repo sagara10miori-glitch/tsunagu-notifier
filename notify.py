@@ -179,13 +179,11 @@ def parse_items(soup, mode: str):
         # fallback: text-danger が無い場合は数字だけのタグを探す
         if not price_tag:
             for tag in c.find_all(["p", "h2", "h3"]):
-                digits = "".join(ch for ch in tag.text if ch.isdigit())
-                if digits:
+                text = tag.text
+                digits = "".join(ch for ch in text if ch.isdigit())
+                if digits and ("円" in text or "¥" in text):
                     price_tag = tag
                     break
-        
-        raw_price = price_tag.text.strip() if price_tag else ""
-        price = normalize_price(raw_price)
         
         raw_price = price_tag.text.strip() if price_tag else ""
         price = normalize_price(raw_price)
@@ -258,6 +256,7 @@ def build_embed(item):
 # メイン処理
 # -----------------------------
 def main():
+    global seller_cache
     seller_cache = load_json("data/seller_cache.json", default={})
     last_all = load_json(DATA_LAST_ALL, default={})
 
