@@ -1,13 +1,29 @@
 import os
 import datetime
 import re
+import requests
 
 from utils.safety import safe_run
-from utils.fetch import fetch_html, parse_html, validate_image_url
+from utils.fetch import parse_html, validate_image_url
 from utils.hashgen import generate_item_hash
 from utils.shorturl import get_short_url
 from utils.storage import load_json, save_json, append_json_list, clear_json
 from utils.discord import send_discord
+
+# -----------------------------
+# fetch_html を timeout 対応に差し替え
+# -----------------------------
+def fetch_html(url):
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"
+        }
+        res = requests.get(url, headers=headers, timeout=10)
+        res.raise_for_status()
+        return res.text
+    except Exception as e:
+        print("[ERROR] fetch_html failed:", e)
+        return ""
 
 # -----------------------------
 # 設定
