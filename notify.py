@@ -186,6 +186,9 @@ def parse_items(soup, mode: str):
         
         raw_price = price_tag.text.strip() if price_tag else ""
         price = normalize_price(raw_price)
+        
+        raw_price = price_tag.text.strip() if price_tag else ""
+        price = normalize_price(raw_price)
 
         # 即決価格は h2 のうち「数字のみ」を含むものだけ採用
         buy_now = None
@@ -255,6 +258,7 @@ def build_embed(item):
 # メイン処理
 # -----------------------------
 def main():
+    seller_cache = load_json("data/seller_cache.json", default={})
     last_all = load_json(DATA_LAST_ALL, default={})
 
     # last_all を 100 件に制限
@@ -342,6 +346,7 @@ def main():
             return
 
     save_json(DATA_LAST_ALL, last_all)
+    save_json("data/seller_cache.json", seller_cache)
 
 
 if __name__ == "__main__":
