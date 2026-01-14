@@ -4,7 +4,6 @@ import re
 
 from utils.safety import safe_run
 from utils.fetch import fetch_html, parse_html, validate_image_url
-from utils.classify import classify_item
 from utils.hashgen import generate_item_hash
 from utils.shorturl import get_short_url
 from utils.storage import load_json, save_json, append_json_list, clear_json
@@ -211,6 +210,9 @@ def main():
 
     new_items = items_exist + items_auction
 
+    # ★ 価格の安い順に並べ替え
+    new_items.sort(key=lambda x: int(x["price"].replace("円", "").replace(",", "")))
+
     embeds_to_send = []
 
     for item in new_items:
@@ -221,6 +223,11 @@ def main():
         # 出品者ID取得
         seller_id = fetch_seller_id_from_detail(item["url"])
         item["seller_id"] = seller_id
+
+        # 取得失敗 → 二度と通知しない
+        if not seller_id:
+            last_all[h] = True
+            continue
 
         # 除外ユーザー
         if seller_id in EXCLUDE_USERS:
@@ -252,7 +259,14 @@ def main():
     if embeds_to_send:
         first_price = int(embeds_to_send[0]["fields"][2]["value"].replace("円", "").replace(",", ""))
         title = get_notification_title(first_price)
-        send_discord(WEBHOOK_URL, content=title, embeds=embeds_to_send)
+
+        try:
+            send_discord(WEBHOOK_URL, content=title, embeds=embeds_to_send)
+        except Exception as e:
+            print("[ERROR] Discord送信失敗:", e)
+        finally:
+            save_json(DATA_LAST_ALL, last_all)
+            return
 
     save_json(DATA_LAST_ALL, last_all)
 
