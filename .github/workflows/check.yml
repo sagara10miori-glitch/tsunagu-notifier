@@ -8,6 +8,7 @@ on:
 jobs:
   run:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout
@@ -27,5 +28,6 @@ jobs:
       - name: Run notifier
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}
         run: |
           python notify.py || python notify.py
