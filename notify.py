@@ -51,6 +51,16 @@ def load_exclude_users(path):
 EXCLUDE_USERS = load_exclude_users("config/exclude_users.txt")
 
 
+def load_special_users(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return {line.strip() for line in f if line.strip() and not line.startswith("#")}
+    except FileNotFoundError:
+        return set()
+
+SPECIAL_USERS = load_special_users("config/special_users.txt")
+
+
 # ============================
 # ユーティリティ
 # ============================
@@ -260,29 +270,44 @@ def main():
         for item in items:
             key = normalize_url(item["url"])
             h = generate_item_hash(key)
-
+        
             if h in last:
                 continue
-
+        
             price = int(item["price"].replace("円", "").replace(",", ""))
+        
+            seller = fetch_seller_id(item["url"])
+        
+            # ============================
+            # special_users → 最優先で通知
+            # ============================
+            if seller in SPECIAL_USERS:
+                if len(embeds) < 10:
+                    embeds.append(build_embed(item))
+                last[h] = True
+                continue
+        
+            # 通常の価格フィルタ
             if price >= 15000:
                 last[h] = True
                 continue
-
-            seller = fetch_seller_id(item["url"])
+        
+            # 除外ユーザー
             if not seller or seller in EXCLUDE_USERS:
                 last[h] = True
                 continue
-
+        
+            # 深夜帯 → pending
             if is_night():
                 path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
                 append_json_list(path, item)
                 last[h] = True
                 continue
-
+        
+            # 通常通知
             if len(embeds) < 10:
                 embeds.append(build_embed(item))
-
+        
             last[h] = True
 
         if embeds:
