@@ -12,6 +12,7 @@ def send_discord(webhook_url: str, content: str | None = None, embeds: list[dict
         payload["embeds"] = embeds
 
     headers = {"Content-Type": "application/json"}
+
     try:
         requests.post(webhook_url, json=payload, headers=headers, timeout=5)
     except Exception:
