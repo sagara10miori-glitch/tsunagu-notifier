@@ -2,7 +2,7 @@ name: Check
 
 on:
   schedule:
-    - cron: "*/1 * * * *"
+    - cron: "*/1 * * * *"   # 毎分実行
   workflow_dispatch:
 
 jobs:
@@ -14,13 +14,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 1
+          fetch-depth: 1   # 高速化
 
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
-          cache: "pip"
+          cache: "pip"     # pip キャッシュで高速化
 
       - name: Install dependencies
         run: pip install -r requirements.txt
@@ -28,6 +28,6 @@ jobs:
       - name: Run notifier
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          PROXY_URL: ${{ secrets.PROXY_URL }}
+          PROXY_URL: ${{ secrets.PROXY_URL }}   # Cloudflare 対策（任意）
         run: |
-          python notify.py || python notify.py
+          python notify.py || python notify.py   # 一時的な失敗を自動リトライ
