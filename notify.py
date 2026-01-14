@@ -39,6 +39,14 @@ DATA_SELLER = "data/seller_cache.json"
 DATA_PENDING_EXIST = "data/pending_night_exist.json"
 DATA_PENDING_AUCTION = "data/pending_night_auction.json"
 
+def load_exclude_users(path):
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return {line.strip() for line in f if line.strip() and not line.startswith("#")}
+    except FileNotFoundError:
+        return set()
+
+EXCLUDE_USERS = load_exclude_users("config/exclude_users.txt")
 
 # ============================
 # ユーティリティ
