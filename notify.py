@@ -311,17 +311,26 @@ def main():
             last[h] = True
 
         if embeds:
-            first_price = int(
-                embeds[0]["fields"][2]["value"].replace("円", "").replace(",", "")
+            # special_users が含まれているか判定
+            contains_special = any(
+                fetch_seller_id(embed["url"]) in SPECIAL_USERS
+                for embed in embeds
             )
-
-            title = (
-                "@everyone\n📢つなぐ　新着通知" if first_price <= 5000 else
-                "🔔つなぐ　新着通知" if first_price <= 9999 else
-                "📝つなぐ　新着通知"
-            )
-
+        
+            if contains_special:
+                title = "💌つなぐ　優先通知"
+            else:
+                first_price = int(
+                    embeds[0]["fields"][2]["value"].replace("円", "").replace(",", "")
+                )
+                title = (
+                    "@everyone\n📢つなぐ　新着通知" if first_price <= 5000 else
+                    "🔔つなぐ　新着通知" if first_price <= 9999 else
+                    "📝つなぐ　新着通知"
+                )
+        
             send_discord(WEBHOOK_URL, title, embeds)
+
 
     finally:
         save_json(DATA_LAST, last)
