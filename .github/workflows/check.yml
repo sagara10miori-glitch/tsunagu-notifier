@@ -2,7 +2,7 @@ name: Check
 
 on:
   schedule:
-    - cron: "*/1 * * * *"   # 毎分実行
+    - cron: "*/1 * * * *"
   workflow_dispatch:
 
 jobs:
@@ -10,25 +10,22 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 高速化：浅い clone
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
 
-      # Python + pip キャッシュ（最速）
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: "3.11"
           cache: "pip"
 
-      # pip キャッシュが効くので高速
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      # 実行
       - name: Run notifier
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-        run: python notify.py
+        run: |
+          python notify.py || python notify.py
