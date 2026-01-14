@@ -108,7 +108,11 @@ def fetch_seller_id(url):
     if url in seller_cache:
         return seller_cache[url]
 
-    soup = parse_html(fetch_html(url))
+    html = fetch_html(url)
+    if not html:
+        return ""  # ブロック時は seller_id 不明として扱う
+    
+    soup = parse_html(html)
     if not soup:
         seller_cache[url] = ""
         return ""
