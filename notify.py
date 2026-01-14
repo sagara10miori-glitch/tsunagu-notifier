@@ -11,8 +11,9 @@ from utils.shorturl import get_short_url
 from utils.storage import load_json, save_json, append_json_list, clear_json
 from utils.discord import send_discord
 
+
 # -----------------------------
-# 高速化版 fetch_html（timeout + retry + UA + Accept）
+# 高速 fetch_html（UA + timeout + retry）
 # -----------------------------
 def fetch_html(url):
     headers = {
@@ -21,16 +22,17 @@ def fetch_html(url):
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
 
-    for attempt in range(2):  # retry 1回
+    for attempt in range(2):
         try:
             res = requests.get(url, headers=headers, timeout=5)
             res.raise_for_status()
             return res.text
         except Exception:
-            time.sleep(1 + attempt)  # 指数バックオフ
+            time.sleep(1 + attempt)
             continue
 
     return ""
+
 
 # -----------------------------
 # 設定
@@ -58,8 +60,9 @@ DATA_LAST_ALL = "data/last_all.json"
 DATA_PENDING_EXIST = "data/pending_night_exist.json"
 DATA_PENDING_AUCTION = "data/pending_night_auction.json"
 
+
 # -----------------------------
-# 除外ユーザー（ID）
+# 除外ユーザー
 # -----------------------------
 def load_exclude_users(path: str) -> set:
     try:
@@ -68,12 +71,15 @@ def load_exclude_users(path: str) -> set:
     except FileNotFoundError:
         return set()
 
+
 EXCLUDE_USERS = load_exclude_users("config/exclude_users.txt")
+
 
 # -----------------------------
 # seller_id キャッシュ
 # -----------------------------
 seller_cache = {}
+
 
 # -----------------------------
 # ユーティリティ
@@ -81,9 +87,11 @@ seller_cache = {}
 def is_night() -> bool:
     return 2 <= datetime.datetime.now().hour < 6
 
+
 def is_morning_summary() -> bool:
     now = datetime.datetime.now()
     return now.hour == 6 and now.minute == 0
+
 
 def normalize_price(price_str: str) -> str:
     if not price_str:
@@ -93,8 +101,9 @@ def normalize_price(price_str: str) -> str:
         return "0円"
     return f"{int(digits):,}円"
 
+
 # -----------------------------
-# 詳細ページからユーザーID取得（完全対応版）
+# seller_id 取得（完全対応版）
 # -----------------------------
 def fetch_seller_id_from_detail(url):
     if url in seller_cache:
@@ -106,7 +115,7 @@ def fetch_seller_id_from_detail(url):
         seller_cache[url] = ""
         return ""
 
-    # すべての a タグから /users/ を含む href を探す（絶対URLにも対応）
+    # /users/ を含むリンクを最優先で探す（絶対URL・相対URL両対応）
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if "/users/" in href:
@@ -116,7 +125,7 @@ def fetch_seller_id_from_detail(url):
                 seller_cache[url] = seller_id
                 return seller_id
 
-    # フォールバック：/profile/ パターンにも対応
+    # フォールバック：/profile/ パターン
     for a in soup.find_all("a", href=True):
         href = a["href"]
         if "/profile/" in href:
@@ -129,8 +138,9 @@ def fetch_seller_id_from_detail(url):
     seller_cache[url] = ""
     return ""
 
+
 # -----------------------------
-# 価格帯別：通知文言
+# 通知文言
 # -----------------------------
 def get_notification_title(price_num):
     if price_num <= 5000:
@@ -140,19 +150,21 @@ def get_notification_title(price_num):
     else:
         return "📝つなぐ　新着通知"
 
+
 # -----------------------------
-# 価格帯別：embed色
+# embed 色
 # -----------------------------
 def get_embed_color(price_num):
     if price_num <= 5000:
-        return 0xE74C3C  # 赤
+        return 0xE74C3C
     elif price_num <= 9999:
-        return 0x3498DB  # 青
+        return 0x3498DB
     else:
-        return 0x2ECC71  # 緑
+        return 0x2ECC71
+
 
 # -----------------------------
-# HTML解析（高速化版）
+# HTML解析（誤検出ゼロ版）
 # -----------------------------
 def parse_items(soup, mode: str):
     items = []
@@ -160,18 +172,25 @@ def parse_items(soup, mode: str):
 
     for c in cards:
         title_tag = c.find(class_="title")
-        price_tag = c.find(class_="text-danger") or c.find("h3")
-        buy_now_tag = c.find("h2", class_=lambda x: x and "text-danger" not in x)
+
+        # 価格は text-danger のみを信頼（残り時間などの誤検出防止）
+        price_tag = c.find("p", class_=lambda x: x and "text-danger" in x)
+
+        raw_price = price_tag.text.strip() if price_tag else ""
+        price = normalize_price(raw_price)
+
+        # 即決価格は h2 のうち「数字のみ」を含むものだけ採用
+        buy_now = None
+        buy_now_tag = c.find("h2")
+        if buy_now_tag:
+            digits = "".join(ch for ch in buy_now_tag.text if ch.isdigit())
+            if digits:
+                buy_now = normalize_price(buy_now_tag.text)
+
         thumb_tag = c.find("img")
         url_tag = c.find("a")
 
         title = title_tag.text.strip() if title_tag else ""
-        raw_price = price_tag.text.strip() if price_tag else ""
-        price = normalize_price(raw_price)
-
-        raw_buy_now = buy_now_tag.text.strip() if buy_now_tag else None
-        buy_now = normalize_price(raw_buy_now) if raw_buy_now else None
-
         thumb = thumb_tag["src"] if thumb_tag and thumb_tag.has_attr("src") else ""
 
         url = url_tag["href"] if url_tag and url_tag.has_attr("href") else ""
@@ -188,6 +207,7 @@ def parse_items(soup, mode: str):
         })
 
     return items
+
 
 # -----------------------------
 # embed生成
@@ -220,13 +240,14 @@ def build_embed(item):
 
     return embed
 
+
 # -----------------------------
 # メイン処理
 # -----------------------------
 def main():
     last_all = load_json(DATA_LAST_ALL, default={})
 
-    # last_all の肥大化対策（100件に制限）
+    # last_all を 100 件に制限
     if len(last_all) > 100:
         last_all = dict(list(last_all.items())[-100:])
 
@@ -257,26 +278,23 @@ def main():
 
     new_items = items_exist + items_auction
 
-    # ★ 価格の安い順に並べ替え
+    # 価格の安い順
     new_items.sort(key=lambda x: int(x["price"].replace("円", "").replace(",", "")))
 
     embeds_to_send = []
 
     for item in new_items:
-        # ★ URL 正規化（重複ゼロ）
         clean_url = item["url"].split("?")[0]
         h = generate_item_hash(clean_url)
 
         if h in last_all:
             continue
 
-        # 価格フィルター（高速化：seller_id より先）
         price_num = int(item["price"].replace("円", "").replace(",", ""))
         if price_num >= 15000:
             last_all[h] = True
             continue
 
-        # seller_id（完全対応版）
         seller_id = fetch_seller_id_from_detail(item["url"])
         item["seller_id"] = seller_id
 
@@ -288,7 +306,6 @@ def main():
             last_all[h] = True
             continue
 
-        # 深夜帯 → pending
         if is_night():
             pending_path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
             pending = load_json(pending_path, default=[])
@@ -297,13 +314,11 @@ def main():
             last_all[h] = True
             continue
 
-        # 通知対象
         if len(embeds_to_send) < 10:
             embeds_to_send.append(build_embed(item))
 
         last_all[h] = True
 
-    # 通知送信
     if embeds_to_send:
         first_price = int(embeds_to_send[0]["fields"][2]["value"].replace("円", "").replace(",", ""))
         title = get_notification_title(first_price)
@@ -318,8 +333,6 @@ def main():
 
     save_json(DATA_LAST_ALL, last_all)
 
-# -----------------------------
-# 実行
-# -----------------------------
+
 if __name__ == "__main__":
     safe_run(main)
