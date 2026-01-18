@@ -425,7 +425,7 @@ def main(args):
                 )
 
             if args.dry_run:
-                if not args.quiet:
+                if embeds and not args.quiet:
                     print("=== DRY RUN ===")
                     print(title)
                     for e in embeds:
