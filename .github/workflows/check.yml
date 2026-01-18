@@ -2,7 +2,6 @@ name: Check
 
 on:
   schedule:
-    # 毎分実行（JST での挙動は notify.py 側で制御）
     - cron: "*/1 * * * *"
   workflow_dispatch:
 
@@ -35,8 +34,7 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PROXY_URL: ${{ secrets.PROXY_URL }}
         run: |
-          # 1回目失敗したら2回目を実行（Cloudflare対策）
-          python notify.py || python notify.py
+          python notify.py --quiet --retry=3
 
       - name: Notify failure
         if: failure()
