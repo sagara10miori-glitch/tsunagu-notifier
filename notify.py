@@ -66,7 +66,7 @@ SPECIAL_USERS = load_special_users("config/special_users.txt")
 # ============================
 
 def now():
-    return datetime.datetime.now()
+    return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 
 def is_night():
@@ -204,7 +204,7 @@ def parse_items(soup, mode):
 # embed 生成（短く・美しく）
 # ============================
 
-def build_embed(item):
+def build_embed(item, seller):
     p = int(item["price"].replace("円", "").replace(",", ""))
     color = 0xE74C3C if p <= 5000 else 0x3498DB if p <= 9999 else 0x2ECC71
     short = get_short_url(item["url"])
@@ -227,6 +227,7 @@ def build_embed(item):
         "url": short,
         "color": color,
         "fields": fields,
+        "seller": seller,   # ← 追加
     }
 
     img = validate_image_url(item["thumb"])
@@ -283,7 +284,7 @@ def main():
             # ============================
             if seller in SPECIAL_USERS:
                 if len(embeds) < 10:
-                    embeds.append(build_embed(item))
+                    embeds.append(build_embed(item, seller))
                 last[h] = True
                 continue
         
@@ -306,14 +307,13 @@ def main():
         
             # 通常通知
             if len(embeds) < 10:
-                embeds.append(build_embed(item))
+                embeds.append(build_embed(item, seller))
         
             last[h] = True
 
         if embeds:
-            # special_users が含まれているか判定
             contains_special = any(
-                fetch_seller_id(embed["url"]) in SPECIAL_USERS
+                embed.get("seller") in SPECIAL_USERS
                 for embed in embeds
             )
         
@@ -333,8 +333,8 @@ def main():
 
 
     finally:
-        save_json(DATA_LAST, last)
         save_json(DATA_SELLER, seller_cache)
+        save_json(DATA_LAST, last)
 
 
 # ============================
