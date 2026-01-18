@@ -140,8 +140,8 @@ def normalize_url(url):
         item_id = m.group(2)
         return f"{category}/{item_id}"
 
-    # ここに来ることはほぼ無いが、念のため fallback を置く
-    return url.strip().rstrip("/")}"
+    # fallback（ここに来ることはほぼ無い）
+    return url.strip().rstrip("/")
 
 
 # ============================
