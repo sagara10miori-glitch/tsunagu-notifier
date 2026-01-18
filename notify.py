@@ -367,6 +367,10 @@ def main(args):
 
         for item in items:
             key = normalize_url(item["url"])
+            if not key:
+                # URL が異常 → 通知も記録も行わない
+                continue
+            
             h = generate_item_hash(key)
 
             if h in last:
