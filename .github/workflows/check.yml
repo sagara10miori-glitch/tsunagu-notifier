@@ -2,15 +2,17 @@ name: Check
 
 on:
   schedule:
+    # 毎分実行（JST での挙動は notify.py 側で制御）
     - cron: "*/1 * * * *"
   workflow_dispatch:
 
 jobs:
   run:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 3
 
     env:
+      TZ: Asia/Tokyo
       PIP_DEFAULT_TIMEOUT: "60"
 
     steps:
@@ -20,7 +22,7 @@ jobs:
           fetch-depth: 1
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
           cache: "pip"
@@ -33,4 +35,12 @@ jobs:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           PROXY_URL: ${{ secrets.PROXY_URL }}
         run: |
+          # 1回目失敗したら2回目を実行（Cloudflare対策）
           python notify.py || python notify.py
+
+      - name: Notify failure
+        if: failure()
+        run: |
+          curl -H "Content-Type: application/json" \
+            -d "{\"content\": \"❌ GitHub Actions が失敗しました\"}" \
+            ${{ secrets.DISCORD_WEBHOOK_URL }}
