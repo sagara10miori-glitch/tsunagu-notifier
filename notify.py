@@ -131,19 +131,17 @@ def normalize_price(s):
 
 
 # URL 正規化（商品ID部分だけを抽出）
-_URL_RE = re.compile(r"(auctions|exist_products)/(\d+)")
+_URL_RE = re.compile(r"(?:https?:)?//?[^/]*?(auctions|exist_products)/(\d+)")
 
 def normalize_url(url):
-    # URL 全体から商品IDを抽出する
     m = _URL_RE.search(url)
-    if not m:
-        return ""
+    if m:
+        category = m.group(1)
+        item_id = m.group(2)
+        return f"{category}/{item_id}"
 
-    category = m.group(1)
-    item_id = m.group(2)
-
-    # 商品IDだけをキーにする（絶対に揺れない）
-    return f"{category}/{item_id}"
+    # ここに来ることはほぼ無いが、念のため fallback を置く
+    return url.strip().rstrip("/")}"
 
 
 # ============================
