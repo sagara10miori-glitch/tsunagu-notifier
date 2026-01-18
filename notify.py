@@ -2,6 +2,7 @@
 # インポート
 # ============================
 
+import argparse
 import os
 import re
 import time
@@ -13,6 +14,28 @@ from utils.storage import load_json, save_json, append_json_list, clear_json
 from utils.hashgen import generate_item_hash
 from utils.shorturl import get_short_url
 from utils.discord import send_discord
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+
+    # ログ制御
+    parser.add_argument("--quiet", action="store_true")
+    parser.add_argument("--debug", action="store_true")
+
+    # 時間帯強制
+    parser.add_argument("--force-night", action="store_true")
+    parser.add_argument("--force-day", action="store_true")
+
+    # 通知制御
+    parser.add_argument("--dry-run", action="store_true")
+
+    # Cloudflare 対策
+    parser.add_argument("--retry", type=int, default=1)
+
+    # seller_cache を無視して再取得
+    parser.add_argument("--no-cache", action="store_true")
+
+    return parser.parse_args()
 
 
 # ============================
@@ -87,6 +110,14 @@ def is_night():
     return 2 <= h < 6
 
 
+def is_night_forced(args):
+    if args.force_night:
+        return True
+    if args.force_day:
+        return False
+    return is_night()
+
+
 def is_morning():
     """朝6:00ちょうどのまとめ通知判定"""
     t = now()
@@ -115,11 +146,7 @@ def normalize_url(url):
 # Cloudflare に強い HTML fetch
 # ============================
 
-def fetch_html(url):
-    """
-    Cloudflare によるブロックを避けつつ HTML を取得する。
-    軽量な retry（指数バックオフ）で安定性を確保。
-    """
+def fetch_html(url, retry=1):
     headers = {
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -133,14 +160,12 @@ def fetch_html(url):
     proxy = os.getenv("PROXY_URL")
     proxies = {"http": proxy, "https": proxy} if proxy else None
 
-    # 2回 → 3回に増やして安定性UP（仕様は変わらない）
-    for t in range(3):
+    for t in range(retry):
         try:
             r = requests.get(url, headers=headers, proxies=proxies, timeout=6)
             r.raise_for_status()
             return r.text
         except Exception:
-            # Cloudflare の一時ブロックに強い指数バックオフ
             time.sleep(1.2 * (t + 1))
 
     return ""
@@ -152,48 +177,8 @@ def fetch_html(url):
 
 seller_cache = {}
 
-def fetch_seller_id(url):
-    """
-    商品ページから seller_id を抽出する。
-    - seller_cache により高速化
-    - Cloudflare ブロック時も空文字で安全に処理
-    """
-    if url in seller_cache:
-        return seller_cache[url]
-
-    html = fetch_html(url)
-    if not html:
-        seller_cache[url] = ""
-        return ""
-
-    soup = parse_html(html)
-    if not soup:
-        seller_cache[url] = ""
-        return ""
-
-    # /users/ または /profile/ のリンクから seller_id を抽出
-    for pat in ["/users/", "/profile/"]:
-        for a in soup.find_all("a", href=True):
-            href = a["href"]
-            if pat in href:
-                m = re.search(pat + r"([^/?#]+)", href)
-                if m:
-                    seller_cache[url] = m.group(1)
-                    return seller_cache[url]
-
-    seller_cache[url] = ""
-    return ""
-
-
-# ============================
-# seller_id 抽出（高速・安定）
-# ============================
-
-seller_cache = {}
-
-
-def fetch_seller_id(url):
-    if url in seller_cache:
+def fetch_seller_id(url, no_cache=False):
+    if not no_cache and url in seller_cache:
         return seller_cache[url]
 
     html = fetch_html(url)
@@ -343,33 +328,28 @@ def build_embed(item, seller):
 # メイン処理
 # ============================
 
-def main():
+def main(args):
     global seller_cache
 
-    # キャッシュ読み込み
     seller_cache = load_json(DATA_SELLER, default={})
     last = load_json(DATA_LAST, default={})
 
     try:
-        # ============================
-        # 朝6:00 → 深夜帯まとめ通知
-        # ============================
-        if is_morning():
+        # 朝6時まとめ通知
+        if is_morning() and not args.force_night:
             pending = (
                 load_json(DATA_PENDING_EXIST, []) +
                 load_json(DATA_PENDING_AUCTION, [])
             )
-            if pending:
+            if pending and not args.dry_run:
                 send_discord(WEBHOOK_URL, "🌅 深夜帯まとめ通知", pending[:10])
 
             clear_json(DATA_PENDING_EXIST)
             clear_json(DATA_PENDING_AUCTION)
 
-        # ============================
-        # 商品一覧取得
-        # ============================
-        soup_exist = parse_html(fetch_html(URL_EXIST))
-        soup_auction = parse_html(fetch_html(URL_AUCTION))
+        # 商品取得
+        soup_exist = parse_html(fetch_html(URL_EXIST, retry=args.retry))
+        soup_auction = parse_html(fetch_html(URL_AUCTION, retry=args.retry))
 
         items = []
         if soup_exist:
@@ -377,80 +357,58 @@ def main():
         if soup_auction:
             items += parse_items(soup_auction, "auction")
 
-        # 価格の安い順に並べる（既存仕様）
         items.sort(key=lambda x: int(x["price"].replace("円", "").replace(",", "")))
 
         embeds = []
 
-        # ============================
-        # 商品ごとの処理
-        # ============================
         for item in items:
             key = normalize_url(item["url"])
             h = generate_item_hash(key)
 
-            # すでに通知済みならスキップ
             if h in last:
                 continue
 
-            # 価格の数値化（複数回使うので最初に）
             price = int(item["price"].replace("円", "").replace(",", ""))
 
-            # seller_id を取得（キャッシュあり）
-            seller = fetch_seller_id(item["url"])
+            seller = fetch_seller_id(item["url"], no_cache=args.no_cache)
 
-            # ============================
-            # special_users → 最優先で通知
-            # ============================
+            # special_users
             if seller in SPECIAL_USERS:
                 if len(embeds) < 10:
                     embeds.append(build_embed(item, seller))
                 last[h] = True
                 continue
 
-            # ============================
-            # 通常の価格フィルタ（15000円以上は通知しない）
-            # ============================
+            # 通常フィルタ
             if price >= 15000:
                 last[h] = True
                 continue
 
-            # ============================
-            # 除外ユーザー
-            # ============================
             if not seller or seller in EXCLUDE_USERS:
                 last[h] = True
                 continue
 
-            # ============================
-            # 深夜帯 → pending に保存
-            # ============================
-            if is_night():
+            # 深夜判定（強制含む）
+            if is_night_forced(args):
                 path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
                 append_json_list(path, item)
                 last[h] = True
                 continue
 
-            # ============================
             # 通常通知
-            # ============================
             if len(embeds) < 10:
                 embeds.append(build_embed(item, seller))
 
             last[h] = True
 
-        # ============================
-        # 通知送信
-        # ============================
+        # 通知送信（dry-run 対応）
         if embeds:
-            # special_users が含まれているか判定（embed に seller を保持している）
             contains_special = any(
                 embed.get("seller") in SPECIAL_USERS
                 for embed in embeds
             )
 
             if contains_special:
-                # @everyone は優先通知のときだけ
                 title = "@everyone\n💌つなぐ　優先通知"
             else:
                 first_price = int(
@@ -462,10 +420,16 @@ def main():
                     "📝つなぐ　新着通知"
                 )
 
-            send_discord(WEBHOOK_URL, title, embeds)
+            if args.dry_run:
+                if not args.quiet:
+                    print("=== DRY RUN ===")
+                    print(title)
+                    for e in embeds:
+                        print(e)
+            else:
+                send_discord(WEBHOOK_URL, title, embeds)
 
     finally:
-        # 保存順序を seller_cache → last にして安全性UP
         save_json(DATA_SELLER, seller_cache)
         save_json(DATA_LAST, last)
 
@@ -475,4 +439,5 @@ def main():
 # ============================
 
 if __name__ == "__main__":
-    main()
+    args = parse_args()
+    main(args)
