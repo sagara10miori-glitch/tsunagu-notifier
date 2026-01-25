@@ -15,6 +15,11 @@ from utils.hashgen import generate_item_hash
 from utils.shorturl import get_short_url
 from utils.discord import send_discord
 
+
+# ============================
+# 引数
+# ============================
+
 def parse_args():
     parser = argparse.ArgumentParser()
 
@@ -66,13 +71,15 @@ DATA_SELLER = "data/seller_cache.json"
 DATA_PENDING_EXIST = "data/pending_night_exist.json"
 DATA_PENDING_AUCTION = "data/pending_night_auction.json"
 
+MAX_LAST = 5000
+THIRTY_DAYS = 60 * 60 * 24 * 30
+
 
 # ============================
 # ユーザー設定読み込み
 # ============================
 
 def load_exclude_users(path):
-    """除外ユーザー一覧を読み込む"""
     try:
         with open(path, "r", encoding="utf-8") as f:
             return {line.strip() for line in f if line.strip() and not line.startswith("#")}
@@ -84,7 +91,6 @@ EXCLUDE_USERS = load_exclude_users("config/exclude_users.txt")
 
 
 def load_special_users(path):
-    """優先通知ユーザー一覧を読み込む"""
     try:
         with open(path, "r", encoding="utf-8") as f:
             return {line.strip() for line in f if line.strip() and not line.startswith("#")}
@@ -99,13 +105,11 @@ SPECIAL_USERS = load_special_users("config/special_users.txt")
 # ユーティリティ
 # ============================
 
-# GitHub Actions は UTC で動くため、JST に補正した現在時刻を返す
 def now():
     return datetime.datetime.utcnow() + datetime.timedelta(hours=9)
 
 
 def is_night():
-    """深夜帯（JST 2:00〜5:59）判定"""
     h = now().hour
     return 2 <= h < 6
 
@@ -119,18 +123,16 @@ def is_night_forced(args):
 
 
 def is_morning():
-    """朝6:00ちょうどのまとめ通知判定"""
     t = now()
     return t.hour == 6 and t.minute == 0
 
 
-# 価格文字列を正規化（数字抽出 → カンマ付与 → 円）
 def normalize_price(s):
     digits = "".join(c for c in s if c.isdigit())
     return f"{int(digits):,}円" if digits else "0円"
 
 
-# URL 正規化（商品ID部分だけを抽出）
+# URL 正規化（商品ID部分だけを抽出・揺れ吸収）
 _URL_RE = re.compile(r"(?:https?:)?//?[^/]*?(auctions|exist_products)/(\d+)")
 
 def normalize_url(url):
@@ -139,8 +141,6 @@ def normalize_url(url):
         category = m.group(1)
         item_id = m.group(2)
         return f"{category}/{item_id}"
-
-    # fallback（ここに来ることはほぼ無い）
     return url.strip().rstrip("/")
 
 
@@ -174,7 +174,7 @@ def fetch_html(url, retry=1):
 
 
 # ============================
-# seller_id 抽出（高速・安定）
+# seller_id 抽出
 # ============================
 
 seller_cache = {}
@@ -207,27 +207,18 @@ def fetch_seller_id(url, no_cache=False):
 
 
 # ============================
-# HTML 解析（誤検出ゼロ・高速化）
+# HTML 解析
 # ============================
 
 def parse_items(soup, mode):
-    """
-    商品一覧ページから商品情報を抽出する。
-    - 価格タグの検出を強化（text-danger が無い場合の fallback）
-    - URL の補正（// → https:、/ → https://tsunagu.cloud）
-    - 仕様は完全にそのまま
-    """
     items = []
 
     for c in soup.find_all(class_="p-product"):
-        # タイトル
         t = c.find(class_="title")
         title = t.get_text(strip=True) if t else ""
 
-        # 価格（text-danger が無い場合の fallback）
         price_tag = c.find("p", class_=lambda x: x and "text-danger" in x)
         if not price_tag:
-            # 価格が別タグに入っているケースに対応
             for tag in c.find_all(["p", "h2", "h3"]):
                 txt = tag.get_text(strip=True)
                 if ("円" in txt or "¥" in txt) and any(ch.isdigit() for ch in txt):
@@ -236,89 +227,100 @@ def parse_items(soup, mode):
 
         price = normalize_price(price_tag.get_text(strip=True) if price_tag else "")
 
-        # 即決価格（オークションのみ）
         buy_now = None
         h2 = c.find("h2")
         if h2 and ("即決" in h2.text):
             buy_now = normalize_price(h2.text)
 
-        # 商品URL
         url = c.find("a")["href"]
         if url.startswith("//"):
             url = "https:" + url
         elif url.startswith("/"):
             url = "https://tsunagu.cloud" + url
 
-        # サムネイル
         img_tag = c.find("img")
         thumb = img_tag["src"] if img_tag else ""
 
-        # 商品データを追加
-        items.append({
-            "title": title,
-            "price": price,
-            "buy_now": buy_now,
-            "thumb": thumb,
-            "url": url,
-            "mode": mode,
-        })
+        items.append(
+            {
+                "title": title,
+                "price": price,
+                "buy_now": buy_now,
+                "thumb": thumb,
+                "url": url,
+                "mode": mode,
+            }
+        )
 
     return items
 
 
 # ============================
-# embed 生成（短く・美しく・seller保持）
+# embed 生成（優先度＋色）
 # ============================
 
 def build_embed(item, seller):
-    """
-    Discord に送る embed を生成する。
-    - seller を embed に保持（再取得不要）
-    - 価格に応じて色分け（仕様そのまま）
-    - サムネイルは validate_image_url で安全に処理
-    """
-    # 価格の数値化（複数回使うので最初に処理）
     p = int(item["price"].replace("円", "").replace(",", ""))
 
-    # 価格帯による色分け（既存仕様を維持）
-    color = (
-        0xE74C3C if p <= 5000 else
-        0x3498DB if p <= 9999 else
-        0x2ECC71
-    )
+    if seller in SPECIAL_USERS:
+        priority_icon = "💌"
+        priority_label = "優先"
+        color = 0xFF66AA
+    else:
+        if p <= 3000:
+            priority_icon = "🔥"
+            priority_label = "特選"
+            color = 0xFF4444
+        elif p <= 5000:
+            priority_icon = "⭐"
+            priority_label = "注目"
+            color = 0xFFDD33
+        elif p <= 10000:
+            priority_icon = "✨"
+            priority_label = "おすすめ"
+            color = 0xF28C28
+        else:
+            priority_icon = ""
+            priority_label = "通常"
+            color = 0x66CCFF
 
-    # URL は短縮版を使用（既存仕様）
     short = get_short_url(item["url"])
 
-    # embed のフィールド
     fields = [
-        {"name": "URL", "value": short, "inline": False},
+        {
+            "name": "優先度",
+            "value": f"{priority_icon} {priority_label}".strip(),
+            "inline": True,
+        },
         {
             "name": "販売形式",
             "value": "既存販売" if item["mode"] == "exist" else "オークション",
             "inline": True,
         },
-        {"name": "価格", "value": item["price"], "inline": True},
+        {
+            "name": "価格",
+            "value": item["price"],
+            "inline": True,
+        },
     ]
 
-    # 即決価格がある場合のみ追加（既存仕様）
     if item["buy_now"]:
-        fields.append({
-            "name": "即決価格",
-            "value": item["buy_now"],
-            "inline": True
-        })
+        fields.append(
+            {
+                "name": "即決価格",
+                "value": item["buy_now"],
+                "inline": True,
+            }
+        )
 
-    # embed 本体
     embed = {
-        "title": item["title"][:256],  # Discord の制限に合わせる
+        "title": item["title"][:256],
         "url": short,
         "color": color,
         "fields": fields,
-        "seller": seller,  # ← 重要：seller を embed に保持
+        "seller": seller,
     }
 
-    # サムネイル画像（存在する場合のみ）
     img = validate_image_url(item["thumb"])
     if img:
         embed["image"] = {"url": img}
@@ -327,7 +329,31 @@ def build_embed(item, seller):
 
 
 # ============================
-# メイン処理
+# 優先度ソート
+# ============================
+
+def embed_priority(e):
+    seller = e.get("seller", "")
+    if seller in SPECIAL_USERS:
+        pri = 0
+    else:
+        v = e["fields"][0]["value"]
+        if "特選" in v:
+            pri = 1
+        elif "注目" in v:
+            pri = 2
+        elif "おすすめ" in v:
+            pri = 3
+        else:
+            pri = 4
+
+    mode_priority = 0 if e["fields"][1]["value"] == "既存販売" else 1
+    price = int(e["fields"][2]["value"].replace("円", "").replace(",", ""))
+    return (pri, mode_priority, price)
+
+
+# ============================
+# main
 # ============================
 
 def main(args):
@@ -336,12 +362,16 @@ def main(args):
     seller_cache = load_json(DATA_SELLER, default={})
     last = load_json(DATA_LAST, default={})
 
+    now_ts = int(time.time())
+
+    # 古い last を整理（30日以上前を削除）
+    last = {h: ts for h, ts in last.items() if isinstance(ts, int) and now_ts - ts < THIRTY_DAYS}
+
     try:
         # 朝6時まとめ通知
         if is_morning() and not args.force_night:
-            pending = (
-                load_json(DATA_PENDING_EXIST, []) +
-                load_json(DATA_PENDING_AUCTION, [])
+            pending = load_json(DATA_PENDING_EXIST, default=[]) + load_json(
+                DATA_PENDING_AUCTION, default=[]
             )
             if pending and not args.dry_run:
                 send_discord(WEBHOOK_URL, "🌅 深夜帯まとめ通知", pending[:10])
@@ -349,7 +379,6 @@ def main(args):
             clear_json(DATA_PENDING_EXIST)
             clear_json(DATA_PENDING_AUCTION)
 
-        # 商品取得
         soup_exist = parse_html(fetch_html(URL_EXIST, retry=args.retry))
         soup_auction = parse_html(fetch_html(URL_AUCTION, retry=args.retry))
 
@@ -366,9 +395,8 @@ def main(args):
         for item in items:
             key = normalize_url(item["url"])
             if not key:
-                # URL が異常 → 通知も記録も行わない
                 continue
-            
+
             h = generate_item_hash(key)
 
             if h in last:
@@ -378,66 +406,70 @@ def main(args):
 
             seller = fetch_seller_id(item["url"], no_cache=args.no_cache)
 
-            # special_users
             if seller in SPECIAL_USERS:
                 if len(embeds) < 10:
                     embeds.append(build_embed(item, seller))
-                last[h] = True
+                last[h] = now_ts
                 continue
 
-            # 通常フィルタ
             if price >= 15000:
-                last[h] = True
+                last[h] = now_ts
                 continue
 
             if not seller or seller in EXCLUDE_USERS:
-                last[h] = True
+                last[h] = now_ts
                 continue
 
-            # 深夜判定（強制含む）
             if is_night_forced(args):
                 path = DATA_PENDING_EXIST if item["mode"] == "exist" else DATA_PENDING_AUCTION
                 append_json_list(path, item)
-                last[h] = True
+                last[h] = now_ts
                 continue
 
-            # 通常通知
             if len(embeds) < 10:
                 embeds.append(build_embed(item, seller))
 
-            last[h] = True
+            last[h] = now_ts
 
-        # 通知送信（dry-run 対応）
         if embeds:
-            contains_special = any(
-                embed.get("seller") in SPECIAL_USERS
-                for embed in embeds
-            )
+            embeds.sort(key=embed_priority)
+
+            contains_special = any(e.get("seller") in SPECIAL_USERS for e in embeds)
 
             if contains_special:
-                title = "@everyone\n💌つなぐ　優先通知"
+                title = "@everyone\n💌つなぐ 優先通知"
             else:
-                first_price = int(
-                    embeds[0]["fields"][2]["value"].replace("円", "").replace(",", "")
-                )
-                title = (
-                    "📢つなぐ　新着通知" if first_price <= 5000 else
-                    "🔔つなぐ　新着通知" if first_price <= 9999 else
-                    "📝つなぐ　新着通知"
-                )
+                first_label = embeds[0]["fields"][0]["value"]
+                if "特選" in first_label:
+                    title = "🔥つなぐ 特選通知"
+                elif "注目" in first_label:
+                    title = "⭐つなぐ 注目通知"
+                elif "おすすめ" in first_label:
+                    title = "✨つなぐ おすすめ通知"
+                else:
+                    title = "📝つなぐ 通常通知"
 
             if args.dry_run:
-                if embeds and not args.quiet:
+                if not args.quiet:
                     print("=== DRY RUN ===")
                     print(title)
                     for e in embeds:
                         print(e)
             else:
-                send_discord(WEBHOOK_URL, title, embeds)
+                # last のローテーション（件数制限）
+                if len(last) > MAX_LAST:
+                    sorted_items = sorted(last.items(), key=lambda x: x[1])
+                    last = dict(sorted_items[-MAX_LAST:])
+
+                ok = send_discord(WEBHOOK_URL, title, embeds)
+                if ok:
+                    save_json(DATA_LAST, last)
+                else:
+                    if not args.quiet:
+                        print("送信失敗のため last_all.json は更新しません")
 
     finally:
         save_json(DATA_SELLER, seller_cache)
-        save_json(DATA_LAST, last)
 
 
 # ============================
