@@ -5,6 +5,15 @@ on:
     - cron: "*/1 * * * *"
   workflow_dispatch:
 
+# 🔥 GitHub Actions の詰まり防止（必須）
+concurrency:
+  group: tsunagu-check
+  cancel-in-progress: true
+
+# 🔥 push を確実に成功させるための権限
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -36,11 +45,15 @@ jobs:
         run: |
           python notify.py --quiet --retry=3
 
-      # 🔥 ここが重要：更新された last_all.json をコミットする
+      # 🔥 last_all.json を送信成功後にのみ更新するためのコミット処理
       - name: Commit updated cache
         run: |
           git config user.name "github-actions"
           git config user.email "github-actions@github.com"
+
+          # 競合防止（毎分実行で必須）
+          git pull --rebase
+
           git add data/last_all.json data/seller_cache.json
           git commit -m "Update cache" || echo "No changes"
           git push
