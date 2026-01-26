@@ -1,14 +1,13 @@
 import requests
 
-def send_discord(webhook, content=None, embeds=None):
-    if not webhook:
-        return
-    payload = {}
-    if content:
-        payload["content"] = content
-    if embeds:
-        payload["embeds"] = embeds
+def send_discord(url, title, embeds):
+    payload = {
+        "content": title,
+        "embeds": embeds,
+    }
+
     try:
-        requests.post(webhook, json=payload, timeout=5)
+        r = requests.post(url, json=payload, timeout=5)
+        return r.status_code == 204 or r.status_code == 200
     except Exception:
-        pass
+        return False
